@@ -384,12 +384,12 @@ export default function SettingsPage() {
                 <p className="text-xs text-slate-500 mb-2">
                   Requires Google Cloud project with Calendar API enabled.
                 </p>
-                <a
-                  href="/api/integrations/google/auth"
-                  className="block w-full bg-blue-600 text-white py-2.5 rounded-lg text-sm font-semibold text-center active:opacity-80"
+                <button
+                  onClick={() => { window.location.href = "/api/integrations/google/auth"; }}
+                  className="w-full bg-blue-600 text-white py-2.5 rounded-lg text-sm font-semibold text-center active:opacity-80"
                 >
                   Connect Google Calendar
-                </a>
+                </button>
               </div>
             )}
             {syncResult?.provider === "google" && (
@@ -447,12 +447,12 @@ export default function SettingsPage() {
                 <p className="text-xs text-slate-500 mb-2">
                   Requires a Withings developer app at developer.withings.com.
                 </p>
-                <a
-                  href="/api/integrations/withings/auth"
-                  className="block w-full bg-teal-600 text-white py-2.5 rounded-lg text-sm font-semibold text-center active:opacity-80"
+                <button
+                  onClick={() => { window.location.href = "/api/integrations/withings/auth"; }}
+                  className="w-full bg-teal-600 text-white py-2.5 rounded-lg text-sm font-semibold text-center active:opacity-80"
                 >
                   Connect Withings
-                </a>
+                </button>
               </div>
             )}
             {syncResult?.provider === "withings" && (
