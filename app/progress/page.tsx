@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { supabase } from "@/lib/supabase";
+import { db } from "@/lib/db";
 import type { WeightLog } from "@/lib/types";
 
 export default function ProgressPage() {
@@ -14,7 +14,7 @@ export default function ProgressPage() {
   const startWeight = 220;
 
   const loadData = useCallback(async () => {
-    const { data: weights } = await supabase
+    const { data: weights } = await db
       .from("weight_logs")
       .select("*")
       .order("timestamp", { ascending: true })
@@ -35,7 +35,7 @@ export default function ProgressPage() {
     const heightInches = 69;
     const bmi = Math.round((weight / (heightInches * heightInches)) * 703 * 10) / 10;
 
-    const { error } = await supabase.from("weight_logs").insert({
+    const { error } = await db.from("weight_logs").insert({
       weight,
       bmi,
       source: "manual",

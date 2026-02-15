@@ -27,7 +27,7 @@ export interface WeightLog {
   weight: number;
   body_fat_pct: number | null;
   bmi: number | null;
-  source: 'withings' | 'manual';
+  source: 'withings' | 'manual' | 'trendweight';
   created_at: string;
 }
 

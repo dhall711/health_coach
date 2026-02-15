@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { supabase } from "@/lib/supabase";
+import { db } from "@/lib/db";
 import type { Workout, WorkoutType } from "@/lib/types";
 
 export default function WorkoutsPage() {
@@ -17,7 +17,7 @@ export default function WorkoutsPage() {
   const [notes, setNotes] = useState("");
 
   const loadWorkouts = useCallback(async () => {
-    const { data } = await supabase
+    const { data } = await db
       .from("workouts")
       .select("*")
       .order("timestamp", { ascending: false })
@@ -37,7 +37,7 @@ export default function WorkoutsPage() {
   const saveWorkout = async () => {
     if (!duration) return;
 
-    const { error } = await supabase.from("workouts").insert({
+    const { error } = await db.from("workouts").insert({
       type,
       duration_min: parseInt(duration),
       calories_burned: calories ? parseInt(calories) : 0,

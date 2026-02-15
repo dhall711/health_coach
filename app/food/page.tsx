@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { supabase } from "@/lib/supabase";
+import { db } from "@/lib/db";
 import type { FoodFavorite, FoodLog, FoodAnalysisResult, MealType } from "@/lib/types";
 
 type TabMode = "camera" | "voice" | "favorites" | "log";
@@ -30,8 +30,8 @@ export default function FoodPage() {
     const today = new Date().toISOString().split("T")[0];
 
     const [{ data: favs }, { data: logs }] = await Promise.all([
-      supabase.from("food_favorites").select("*").order("sort_order"),
-      supabase
+      db.from("food_favorites").select("*").order("sort_order"),
+      db
         .from("food_logs")
         .select("*")
         .gte("timestamp", `${today}T00:00:00`)
@@ -138,7 +138,7 @@ export default function FoodPage() {
   const saveFoodLog = async (inputMethod: "camera" | "voice" | "favorite" | "manual") => {
     if (!analysisResult) return;
 
-    const { error } = await supabase.from("food_logs").insert({
+    const { error } = await db.from("food_logs").insert({
       meal_type: selectedMealType,
       items: analysisResult.items,
       total_calories: analysisResult.total_calories,
@@ -159,7 +159,7 @@ export default function FoodPage() {
 
   // --- Quick log favorite ---
   const logFavorite = async (fav: FoodFavorite) => {
-    const { error } = await supabase.from("food_logs").insert({
+    const { error } = await db.from("food_logs").insert({
       meal_type: fav.meal_type,
       items: [
         {

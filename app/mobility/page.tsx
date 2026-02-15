@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { supabase } from "@/lib/supabase";
+import { db } from "@/lib/db";
 import { QUICK_ROUTINE, FULL_ROUTINE } from "@/lib/mobilityRoutines";
 import type { MobilityRoutineDefinition, Exercise } from "@/lib/mobilityRoutines";
 
@@ -19,7 +19,7 @@ export default function MobilityPage() {
 
   const checkTodayStatus = useCallback(async () => {
     const today = new Date().toISOString().split("T")[0];
-    const { data } = await supabase
+    const { data } = await db
       .from("mobility_logs")
       .select("id")
       .eq("date", today)
@@ -69,7 +69,7 @@ export default function MobilityPage() {
   const saveRoutine = async () => {
     if (!selectedRoutine) return;
 
-    const { error } = await supabase.from("mobility_logs").insert({
+    const { error } = await db.from("mobility_logs").insert({
       routine_type: selectedRoutine.id,
       exercises_completed: completedExercises,
       flexibility_notes: flexNotes || null,
