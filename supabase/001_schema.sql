@@ -198,10 +198,12 @@ CREATE TABLE sync_logs (
 -- --- Indexes for common queries ---
 CREATE INDEX idx_weight_logs_timestamp ON weight_logs(timestamp DESC);
 CREATE INDEX idx_food_logs_timestamp ON food_logs(timestamp DESC);
-CREATE INDEX idx_food_logs_date ON food_logs(DATE(timestamp));
+-- Note: DATE(timestamp) index omitted -- TIMESTAMPTZ-to-DATE is not IMMUTABLE.
+-- The idx_food_logs_timestamp index covers date-range queries.
 CREATE INDEX idx_workouts_timestamp ON workouts(timestamp DESC);
 CREATE INDEX idx_water_logs_timestamp ON water_logs(timestamp DESC);
-CREATE INDEX idx_water_logs_date ON water_logs(DATE(timestamp));
+-- Note: DATE(timestamp) index omitted -- TIMESTAMPTZ-to-DATE is not IMMUTABLE.
+-- The idx_water_logs_timestamp index covers date-range queries.
 CREATE INDEX idx_daily_summaries_date ON daily_summaries(date DESC);
 CREATE INDEX idx_mobility_logs_date ON mobility_logs(date DESC);
 CREATE INDEX idx_progress_photos_date ON progress_photos(date DESC);

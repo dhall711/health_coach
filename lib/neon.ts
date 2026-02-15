@@ -3,7 +3,6 @@
 
 import { neon } from "@neondatabase/serverless";
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 let _sql: ReturnType<typeof neon> | null = null;
 
 function getSQL() {
@@ -22,14 +21,20 @@ function getSQL() {
 /**
  * Execute a parameterized SQL query against Neon.
  *
+ * Uses sql.query() for conventional (text, params) calls.
+ * Always returns an array of row objects (empty array on failure).
+ *
  * @example
  *   const rows = await query("SELECT * FROM users WHERE id = $1", [userId]);
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function query(text: string, params: unknown[] = []): Promise<any[]> {
   const sql = getSQL();
-  // neon() returns a tagged template function that also accepts (string, params[])
-  // at runtime, but the TypeScript types only expose the tagged template signature.
+  const result = await sql.query(text, params);
+  // Defensive: result should be { rows: [...] } but guard against edge cases
+  if (Array.isArray(result)) {
+    return result;
+  }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return (sql as any)(text, params);
+  return (result as any)?.rows ?? [];
 }

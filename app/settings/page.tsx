@@ -30,7 +30,14 @@ export default function SettingsPage() {
       .limit(1)
       .single();
 
-    if (data) setProfile(data as Profile);
+    if (data) {
+      const p = data as Profile;
+      // Neon may return DATE columns as ISO timestamps -- normalize to YYYY-MM-DD
+      if (p.target_date && p.target_date.includes("T")) {
+        p.target_date = p.target_date.split("T")[0];
+      }
+      setProfile(p);
+    }
     setLoading(false);
   }, []);
 

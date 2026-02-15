@@ -52,6 +52,33 @@ interface QueryDescriptor {
   updateFilters?: Filter[];
 }
 
+// Neon HTTP driver returns NUMERIC/DECIMAL columns as strings (for precision).
+// For a health app, we want them as JS numbers. This coerces numeric strings
+// in each row, excluding columns that should stay as strings (ids, timestamps, etc).
+const NON_NUMERIC_PATTERNS = /^(id|.*_id|timestamp|created_at|updated_at|date|source|type|role|status|provider|name|.*_url|.*_notes|content|icon|label)$/i;
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function coerceNumericStrings(rows: any[]): any[] {
+  if (!Array.isArray(rows) || rows.length === 0) return rows;
+  return rows.map((row) => {
+    if (!row || typeof row !== "object") return row;
+    const out = { ...row };
+    for (const key of Object.keys(out)) {
+      const val = out[key];
+      if (
+        typeof val === "string" &&
+        val !== "" &&
+        !NON_NUMERIC_PATTERNS.test(key) &&
+        !isNaN(Number(val)) &&
+        isFinite(Number(val))
+      ) {
+        out[key] = Number(val);
+      }
+    }
+    return out;
+  });
+}
+
 const OP_MAP: Record<string, string> = {
   eq: "=",
   gte: ">=",
@@ -152,12 +179,13 @@ async function handleSelect(desc: QueryDescriptor) {
     sql += ` LIMIT $${params.length}`;
   }
 
-  const rows = await dbQuery(sql, params);
+  const rawRows = (await dbQuery(sql, params)) || [];
+  const rows = coerceNumericStrings(rawRows);
 
   if (desc.single) {
     return NextResponse.json({
       data: rows.length > 0 ? rows[0] : null,
-      error: rows.length === 0 ? { message: "No rows returned" } : null,
+      error: null,
     });
   }
 
@@ -204,8 +232,8 @@ async function handleInsert(desc: QueryDescriptor) {
     valuePlaceholders.push(`(${rowPlaceholders.join(", ")})`);
   }
 
-  const sql = `INSERT INTO ${desc.table} (${columns.join(", ")}) VALUES ${valuePlaceholders.join(", ")} RETURNING *`;
-  const result = await dbQuery(sql, params);
+  const insertSql = `INSERT INTO ${desc.table} (${columns.join(", ")}) VALUES ${valuePlaceholders.join(", ")} RETURNING *`;
+  const result = coerceNumericStrings((await dbQuery(insertSql, params)) || []);
 
   return NextResponse.json({
     data: result,
@@ -255,7 +283,7 @@ async function handleUpdate(desc: QueryDescriptor) {
   }
 
   sql += " RETURNING *";
-  const result = await dbQuery(sql, params);
+  const result = coerceNumericStrings((await dbQuery(sql, params)) || []);
 
   return NextResponse.json({ data: result, error: null });
 }
@@ -311,8 +339,8 @@ async function handleUpsert(desc: QueryDescriptor) {
     .map((c) => `${c} = EXCLUDED.${c}`)
     .join(", ");
 
-  const sql = `INSERT INTO ${desc.table} (${columns.join(", ")}) VALUES ${valuePlaceholders.join(", ")} ON CONFLICT (${conflictCol}) DO UPDATE SET ${updateCols} RETURNING *`;
-  const result = await dbQuery(sql, params);
+  const upsertSql = `INSERT INTO ${desc.table} (${columns.join(", ")}) VALUES ${valuePlaceholders.join(", ")} ON CONFLICT (${conflictCol}) DO UPDATE SET ${updateCols} RETURNING *`;
+  const result = coerceNumericStrings((await dbQuery(upsertSql, params)) || []);
 
   return NextResponse.json({ data: result, error: null });
 }

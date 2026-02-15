@@ -20,7 +20,7 @@ export async function POST() {
       ]);
 
     // Compute stats
-    const weights = weightLogs.map((w: { weight: number }) => Number(w.weight));
+    const weights = (weightLogs || []).map((w: { weight: number }) => Number(w.weight));
     const avgWeight =
       weights.length > 0
         ? (weights.reduce((a: number, b: number) => a + b, 0) / weights.length).toFixed(1)

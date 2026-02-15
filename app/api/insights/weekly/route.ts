@@ -15,7 +15,7 @@ export async function GET() {
     ]);
 
     // Compute weekly summary
-    const weights = weightLogs.map((w: { weight: number }) => Number(w.weight));
+    const weights = (weightLogs || []).map((w: { weight: number }) => Number(w.weight));
     const avgWeight =
       weights.length > 0
         ? Math.round(
