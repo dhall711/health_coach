@@ -11,7 +11,8 @@ export async function GET(req: NextRequest) {
   }
 
   if (!code) {
-    return NextResponse.redirect(`${base}/settings?error=google_no_code`);
+    // Return 200 for URL validation requests (no code parameter)
+    return new NextResponse("OK", { status: 200 });
   }
 
   try {

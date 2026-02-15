@@ -11,7 +11,9 @@ export async function GET(req: NextRequest) {
   }
 
   if (!code) {
-    return NextResponse.redirect(`${base}/settings?error=withings_no_code`);
+    // Withings validates the callback URL by sending a GET without params.
+    // Return 200 so their verification succeeds.
+    return new NextResponse("OK", { status: 200 });
   }
 
   try {
