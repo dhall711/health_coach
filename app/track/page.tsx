@@ -419,15 +419,45 @@ export default function TrackPage() {
 
   // --- Log selfie ---
   const selfieInputRef = useRef<HTMLInputElement>(null);
+  const [selfieUploading, setSelfieUploading] = useState(false);
+  const [recentPhotos, setRecentPhotos] = useState<Array<{ id: string; date: string; photo_url: string; weight_at_time: number | null }>>([]);
+
+  const loadPhotos = useCallback(async () => {
+    try {
+      const res = await fetch("/api/photos");
+      if (res.ok) {
+        const data = await res.json();
+        setRecentPhotos(data.slice(0, 6));
+      }
+    } catch {}
+  }, []);
+
+  useEffect(() => { loadPhotos(); }, [loadPhotos]);
+
   const handleSelfie = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    // For now, store a placeholder. Full implementation requires Supabase Storage.
-    const { error } = await db.from("progress_photos").insert({
-      photo_url: "pending_upload",
-      notes: "Daily progress selfie",
-    });
-    if (!error) showSuccess("Selfie logged!");
+    setSelfieUploading(true);
+    try {
+      const reader = new FileReader();
+      reader.onload = async () => {
+        const base64 = (reader.result as string).split(",")[1];
+        const res = await fetch("/api/photos", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ imageBase64: base64, mimeType: file.type, notes: "Daily progress selfie" }),
+        });
+        if (res.ok) {
+          showSuccess("Progress photo saved!");
+          loadPhotos();
+        }
+        setSelfieUploading(false);
+      };
+      reader.readAsDataURL(file);
+    } catch {
+      setSelfieUploading(false);
+    }
+    if (selfieInputRef.current) selfieInputRef.current.value = "";
   };
 
   const todayCalories = recentEntries.reduce((sum, l) => sum + (l.total_calories || 0), 0);
@@ -926,20 +956,56 @@ export default function TrackPage() {
 
       {/* SELFIE */}
       {activeType === "selfie" && (
-        <div className="text-center py-6">
-          <input type="file" accept="image/*" capture="user" ref={selfieInputRef} onChange={handleSelfie} className="hidden" />
-          <button onClick={() => selfieInputRef.current?.click()} className="w-24 h-24 bg-[var(--card)] border-2 border-dashed border-slate-600 rounded-2xl flex items-center justify-center mx-auto mb-3 active:opacity-80">
-            <svg className="w-10 h-10 text-slate-400" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z" />
-            </svg>
-          </button>
-          <p className="text-sm text-slate-300">Take a daily progress selfie</p>
-          <p className="text-xs text-slate-500 mt-1">Private -- stored securely, only visible to you</p>
+        <div>
+          <div className="text-center py-6">
+            <input type="file" accept="image/*" capture="user" ref={selfieInputRef} onChange={handleSelfie} className="hidden" />
+            <button
+              onClick={() => selfieInputRef.current?.click()}
+              disabled={selfieUploading}
+              className="w-24 h-24 bg-[var(--card)] border-2 border-dashed border-slate-600 rounded-2xl flex items-center justify-center mx-auto mb-3 active:opacity-80 disabled:opacity-50 hover:border-sky-500 transition-colors"
+            >
+              {selfieUploading ? (
+                <div className="w-8 h-8 border-2 border-sky-400 border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <svg className="w-10 h-10 text-slate-400" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6.827 6.175A2.31 2.31 0 0 1 5.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 0 0-1.134-.175 2.31 2.31 0 0 1-1.64-1.055l-.822-1.316a2.192 2.192 0 0 0-1.736-1.039 48.774 48.774 0 0 0-5.232 0 2.192 2.192 0 0 0-1.736 1.039l-.821 1.316Z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 12.75a4.5 4.5 0 1 1-9 0 4.5 4.5 0 0 1 9 0ZM18.75 10.5h.008v.008h-.008V10.5Z" />
+                </svg>
+              )}
+            </button>
+            <p className="text-sm text-slate-300">{selfieUploading ? "Uploading..." : "Take a daily progress photo"}</p>
+            <p className="text-xs text-slate-500 mt-1">Private -- stored securely, only visible to you</p>
+          </div>
+
+          {/* Recent Photos Grid */}
+          {recentPhotos.length > 0 && (
+            <div className="mt-4">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">Recent Photos</h3>
+                <Link href="/progress" className="text-xs text-sky-400 hover:text-sky-300">View all &rarr;</Link>
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                {recentPhotos.map((photo) => (
+                  <div key={photo.id} className="aspect-[3/4] rounded-lg overflow-hidden relative">
+                    <img src={photo.photo_url} alt={`Progress ${photo.date}`} className="w-full h-full object-cover" />
+                    <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-1.5">
+                      <p className="text-[10px] text-white font-medium">
+                        {new Date(photo.date).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                      </p>
+                      {photo.weight_at_time && (
+                        <p className="text-[9px] text-slate-300">{photo.weight_at_time} lbs</p>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
-      {/* Recent entries */}
-      {recentEntries.length > 0 && (
+      {/* Recent entries -- only on food tab */}
+      {activeType === "food" && recentEntries.length > 0 && (
         <div className="mt-6">
           <h2 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-3">
             Today&apos;s Food Log

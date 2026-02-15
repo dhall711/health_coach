@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { db } from "@/lib/db";
-import { rollingWeightAverage, estimateGoalDate, weeklyCalorieAdherence, macroBreakdown, weeklyWeightChangeRate } from "@/lib/trendAnalysis";
+import { rollingWeightAverage, estimateGoalDate, weeklyCalorieAdherence, macroBreakdown, weeklyWeightChangeRate, deduplicateWeightLogs } from "@/lib/trendAnalysis";
 import { detectOvereatingPatterns, type PatternInsight } from "@/lib/patternDetection";
 import type { WeightLog, FoodLog, Workout } from "@/lib/types";
 
@@ -35,7 +35,7 @@ export default function InsightsPage() {
       db.from("workouts").select("*").gte("timestamp", shortCutoff).order("timestamp", { ascending: true }),
     ]);
 
-    if (weights) setWeightLogs(weights as WeightLog[]);
+    if (weights) setWeightLogs(deduplicateWeightLogs(weights as WeightLog[]));
     if (foods) setFoodLogs(foods as FoodLog[]);
     if (wkts) setWorkouts(wkts as Workout[]);
     setLoading(false);

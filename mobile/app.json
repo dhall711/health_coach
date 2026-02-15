@@ -1,0 +1,51 @@
+{
+  "expo": {
+    "name": "Health Coach Doug",
+    "slug": "health-coach-doug",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "scheme": "healthcoach",
+    "userInterfaceStyle": "dark",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/images/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0f172a"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.dhall.healthcoach",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Health Coach uses the camera to analyze your meals.",
+        "NSPhotoLibraryUsageDescription": "Health Coach accesses your photos to analyze food images."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/adaptive-icon.png",
+        "backgroundColor": "#0f172a"
+      },
+      "edgeToEdgeEnabled": true,
+      "package": "com.dhall.healthcoach"
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "static",
+      "favicon": "./assets/images/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      "expo-image-picker",
+      ["@kingstinct/react-native-healthkit", {
+        "NSHealthShareUsageDescription": "Health Coach Doug reads your health data (weight, steps, workouts, heart rate) to provide personalized coaching and track your progress.",
+        "NSHealthUpdateUsageDescription": "Health Coach Doug can save workout data back to Apple Health to keep all your health records in sync.",
+        "background": true
+      }]
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}

@@ -27,7 +27,7 @@ export interface WeightLog {
   weight: number;
   body_fat_pct: number | null;
   bmi: number | null;
-  source: 'withings' | 'manual' | 'trendweight';
+  source: 'withings' | 'apple_health' | 'manual' | 'trendweight';
   created_at: string;
 }
 
@@ -77,7 +77,7 @@ export interface FoodFavorite {
 
 // --- Workouts ---
 export type WorkoutType = 'amt885' | 'mobility' | 'flexibility' | 'walk' | 'other';
-export type WorkoutSource = 'precor' | 'apple' | 'manual';
+export type WorkoutSource = 'precor' | 'apple_health' | 'manual';
 
 export interface Workout {
   id: string;
