@@ -8,10 +8,13 @@ const WITHINGS_TOKEN_URL = "https://wbsapi.withings.net/v2/oauth2";
 const WITHINGS_MEASURE_URL = "https://wbsapi.withings.net/measure";
 
 function getRedirectUri() {
-  const base = process.env.NEXT_PUBLIC_APP_URL || process.env.VERCEL_URL
-    ? `https://${process.env.VERCEL_URL}`
-    : "http://localhost:3000";
-  return `${base}/api/integrations/withings/callback`;
+  if (process.env.NEXT_PUBLIC_APP_URL) {
+    return `${process.env.NEXT_PUBLIC_APP_URL}/api/integrations/withings/callback`;
+  }
+  if (process.env.VERCEL_URL) {
+    return `https://${process.env.VERCEL_URL}/api/integrations/withings/callback`;
+  }
+  return "http://localhost:3000/api/integrations/withings/callback";
 }
 
 /**

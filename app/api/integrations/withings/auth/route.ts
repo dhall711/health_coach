@@ -1,13 +1,13 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getWithingsAuthUrl } from "@/lib/withings";
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
     const url = getWithingsAuthUrl();
-    return NextResponse.redirect(url);
+    return NextResponse.redirect(url, { status: 302 });
   } catch (err) {
     console.error("Withings auth error:", err);
-    const base = process.env.NEXT_PUBLIC_APP_URL || `https://${process.env.VERCEL_URL}` || "http://localhost:3000";
-    return NextResponse.redirect(`${base}/settings?error=withings_auth_failed`);
+    const origin = req.nextUrl.origin;
+    return NextResponse.redirect(`${origin}/settings?error=withings_auth_failed`, { status: 302 });
   }
 }

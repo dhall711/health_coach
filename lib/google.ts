@@ -10,10 +10,13 @@ const SCOPES = [
 ];
 
 function getRedirectUri() {
-  const base = process.env.NEXT_PUBLIC_APP_URL || process.env.VERCEL_URL
-    ? `https://${process.env.VERCEL_URL}`
-    : "http://localhost:3000";
-  return `${base}/api/integrations/google/callback`;
+  if (process.env.NEXT_PUBLIC_APP_URL) {
+    return `${process.env.NEXT_PUBLIC_APP_URL}/api/integrations/google/callback`;
+  }
+  if (process.env.VERCEL_URL) {
+    return `https://${process.env.VERCEL_URL}/api/integrations/google/callback`;
+  }
+  return "http://localhost:3000/api/integrations/google/callback";
 }
 
 export function createOAuth2Client() {
