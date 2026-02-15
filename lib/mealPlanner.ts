@@ -233,7 +233,7 @@ export const DINNER_TEMPLATES: MealTemplate[] = [
  * Keeps breakfast fixed (user's routine), rotates lunch and dinner.
  */
 export function generateWeeklyPlan(weekOffset: number = 0): DayPlan[] {
-  const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
+  const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
   const breakfast = BREAKFAST_TEMPLATES[0];
 
   return days.map((day, i) => {

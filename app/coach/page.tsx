@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
+import Link from "next/link";
 import { db } from "@/lib/db";
 
 interface Message {
@@ -8,14 +9,110 @@ interface Message {
   content: string;
 }
 
+// Simple markdown-to-JSX renderer
+function MarkdownContent({ text }: { text: string }) {
+  const lines = text.split("\n");
+  const elements: React.ReactNode[] = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+
+    // Headers
+    if (line.startsWith("### ")) {
+      elements.push(<h3 key={i} className="text-sm font-bold mt-3 mb-1">{renderInline(line.slice(4))}</h3>);
+    } else if (line.startsWith("## ")) {
+      elements.push(<h2 key={i} className="text-base font-bold mt-3 mb-1">{renderInline(line.slice(3))}</h2>);
+    } else if (line.startsWith("# ")) {
+      elements.push(<h1 key={i} className="text-lg font-bold mt-3 mb-1">{renderInline(line.slice(2))}</h1>);
+    }
+    // Bullet points
+    else if (line.match(/^[-*] /)) {
+      elements.push(
+        <div key={i} className="flex gap-2 py-0.5">
+          <span className="text-slate-500 flex-shrink-0">&#x2022;</span>
+          <span>{renderInline(line.replace(/^[-*] /, ""))}</span>
+        </div>
+      );
+    }
+    // Numbered lists
+    else if (line.match(/^\d+\. /)) {
+      const num = line.match(/^(\d+)\. /)?.[1];
+      elements.push(
+        <div key={i} className="flex gap-2 py-0.5">
+          <span className="text-slate-500 flex-shrink-0 min-w-[1.2em] text-right">{num}.</span>
+          <span>{renderInline(line.replace(/^\d+\. /, ""))}</span>
+        </div>
+      );
+    }
+    // Empty lines
+    else if (line.trim() === "") {
+      elements.push(<div key={i} className="h-2" />);
+    }
+    // Regular paragraphs
+    else {
+      elements.push(<p key={i} className="py-0.5">{renderInline(line)}</p>);
+    }
+  }
+
+  return <div className="text-sm text-slate-300 leading-relaxed">{elements}</div>;
+}
+
+// Render inline markdown (bold, italic, code)
+function renderInline(text: string): React.ReactNode {
+  const parts: React.ReactNode[] = [];
+  let remaining = text;
+  let key = 0;
+
+  while (remaining.length > 0) {
+    // Bold
+    const boldMatch = remaining.match(/\*\*(.+?)\*\*/);
+    if (boldMatch && boldMatch.index !== undefined) {
+      if (boldMatch.index > 0) {
+        parts.push(<span key={key++}>{remaining.slice(0, boldMatch.index)}</span>);
+      }
+      parts.push(<strong key={key++} className="font-semibold text-white">{boldMatch[1]}</strong>);
+      remaining = remaining.slice(boldMatch.index + boldMatch[0].length);
+      continue;
+    }
+
+    // Inline code
+    const codeMatch = remaining.match(/`(.+?)`/);
+    if (codeMatch && codeMatch.index !== undefined) {
+      if (codeMatch.index > 0) {
+        parts.push(<span key={key++}>{remaining.slice(0, codeMatch.index)}</span>);
+      }
+      parts.push(<code key={key++} className="bg-slate-700 px-1.5 py-0.5 rounded text-xs text-sky-300">{codeMatch[1]}</code>);
+      remaining = remaining.slice(codeMatch.index + codeMatch[0].length);
+      continue;
+    }
+
+    // No more patterns
+    parts.push(<span key={key++}>{remaining}</span>);
+    break;
+  }
+
+  return parts.length === 1 ? parts[0] : <>{parts}</>;
+}
+
 export default function CoachPage() {
-  const [mode, setMode] = useState<"review" | "chat">("review");
+  const [mode, setMode] = useState<"daily" | "review" | "chat">("daily");
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [weeklyReview, setWeeklyReview] = useState<string | null>(null);
   const [reviewLoading, setReviewLoading] = useState(false);
+  const [dailyReview, setDailyReview] = useState<string | null>(null);
+  const [dailyLoading, setDailyLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Read tab from URL params
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const tab = params.get("tab");
+    if (tab === "daily") setMode("daily");
+    else if (tab === "review") setMode("review");
+    else if (tab === "chat") setMode("chat");
+  }, []);
 
   // Load conversation history
   const loadHistory = useCallback(async () => {
@@ -37,7 +134,7 @@ export default function CoachPage() {
         {
           role: "assistant",
           content:
-            "Hey! I'm your AI health coach. I know your full background -- Forestier's disease, your goal to hit 185 lbs, and that you've crushed this before (35 lbs from 2017-2020).\n\nI can help with:\n- **Weekly Reviews** -- portfolio-style analysis of your progress\n- **Meal planning** and calorie guidance\n- **Workout suggestions** for the AMT 885\n- **Mobility routines** safe for your back and hips\n- **Pattern analysis** -- why you overeat and how to fix it\n\nTry the Weekly Review tab, or ask me anything here.",
+            "Hey Doug! I'm your AI health coach. I know your background -- Forestier's disease, your goal to hit 185 lbs, and your history of losing 35 lbs before.\n\nI can help with:\n- **Meal planning** and calorie guidance\n- **Workout suggestions** for the AMT 885\n- **Mobility routines** safe for your back and hips\n- **Pattern analysis** -- why overeating happens and how to fix it\n\nAsk me anything, or use the Daily Review for today's assessment.",
         },
       ]);
     }
@@ -52,6 +149,28 @@ export default function CoachPage() {
       messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }
   }, [messages, mode]);
+
+  // --- Daily Review ---
+  const generateDailyReview = async () => {
+    setDailyLoading(true);
+    try {
+      const res = await fetch("/api/coach/daily-review", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tzOffset: new Date().getTimezoneOffset() }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setDailyReview(data.review);
+      } else {
+        setDailyReview("Unable to generate daily review. Log some data first to get a personalized assessment.");
+      }
+    } catch {
+      setDailyReview("Connection error. Please try again.");
+    } finally {
+      setDailyLoading(false);
+    }
+  };
 
   // --- Weekly Review ---
   const generateWeeklyReview = async () => {
@@ -112,7 +231,6 @@ export default function CoachPage() {
     "What's the single biggest change I should make?",
     "Suggest a high-protein lunch",
     "How should I adjust my calories?",
-    "Am I losing muscle or fat?",
     "Give me a 3-day AMT 885 plan",
   ];
 
@@ -121,14 +239,29 @@ export default function CoachPage() {
       {/* Header */}
       <div className="px-4 pt-6 pb-3">
         <div className="flex items-center justify-between mb-3">
-          <div>
-            <h1 className="text-xl font-bold text-white">AI Coach</h1>
-            <p className="text-xs text-slate-400">Your accountability partner</p>
+          <div className="flex items-center gap-3">
+            <Link href="/" className="w-8 h-8 bg-[var(--card)] rounded-full flex items-center justify-center text-slate-400 hover:text-white transition-colors">
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="m2.25 12 8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25" />
+              </svg>
+            </Link>
+            <div>
+              <h1 className="text-xl font-bold text-white">AI Coach</h1>
+              <p className="text-xs text-slate-400">Your accountability partner</p>
+            </div>
           </div>
         </div>
 
-        {/* Mode Toggle */}
+        {/* Mode Toggle -- 3 tabs */}
         <div className="flex gap-1 bg-[var(--card)] rounded-xl p-1">
+          <button
+            onClick={() => setMode("daily")}
+            className={`flex-1 py-2 rounded-lg text-xs font-medium transition-colors ${
+              mode === "daily" ? "bg-emerald-600 text-white" : "text-slate-400 hover:text-white"
+            }`}
+          >
+            Daily Review
+          </button>
           <button
             onClick={() => setMode("review")}
             className={`flex-1 py-2 rounded-lg text-xs font-medium transition-colors ${
@@ -148,6 +281,68 @@ export default function CoachPage() {
         </div>
       </div>
 
+      {/* DAILY REVIEW MODE */}
+      {mode === "daily" && (
+        <div className="flex-1 overflow-y-auto px-4 pb-24">
+          <div className="bg-gradient-to-br from-emerald-900/30 to-teal-900/30 border border-emerald-700/30 rounded-2xl p-5 mb-4">
+            <div className="flex items-center gap-3 mb-3">
+              <span className="text-3xl">📋</span>
+              <div>
+                <h2 className="font-semibold text-white">Daily Check-In</h2>
+                <p className="text-xs text-emerald-300/70">How&apos;s today going? Get your daily grade and tomorrow&apos;s plan.</p>
+              </div>
+            </div>
+            <p className="text-sm text-slate-300 mb-4">
+              Your AI coach reviews everything you&apos;ve logged today -- food, workouts, water, weight -- then gives you an honest grade, highlights wins, flags concerns, and plans tomorrow.
+            </p>
+            <button
+              onClick={generateDailyReview}
+              disabled={dailyLoading}
+              className="w-full bg-emerald-600 text-white py-3 rounded-xl font-semibold active:opacity-80 disabled:opacity-50 flex items-center justify-center gap-2"
+            >
+              {dailyLoading ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  Reviewing your day...
+                </>
+              ) : (
+                "Generate Daily Review"
+              )}
+            </button>
+          </div>
+
+          {dailyReview && (
+            <div className="bg-[var(--card)] rounded-2xl p-5 mb-4">
+              <div className="flex items-center gap-2 mb-3">
+                <span className="text-lg">📋</span>
+                <h3 className="font-semibold text-sm">Today&apos;s Review</h3>
+              </div>
+              <MarkdownContent text={dailyReview} />
+            </div>
+          )}
+
+          {!dailyReview && !dailyLoading && (
+            <div className="space-y-3">
+              <h3 className="text-xs text-slate-400 uppercase tracking-wider font-semibold">What you&apos;ll get</h3>
+              {[
+                { icon: "📊", title: "Today's Grade", desc: "Honest A-F score based on your logged data" },
+                { icon: "🎯", title: "What Went Well", desc: "Celebrate wins, no matter how small" },
+                { icon: "⚠️", title: "Watch Out", desc: "Overeating, missed workouts, hydration gaps" },
+                { icon: "📅", title: "Tomorrow's Plan", desc: "3 specific, actionable items for tomorrow" },
+              ].map((item) => (
+                <div key={item.title} className="bg-[var(--card)] rounded-xl p-3 flex items-start gap-3">
+                  <span className="text-lg mt-0.5">{item.icon}</span>
+                  <div>
+                    <p className="text-sm font-medium">{item.title}</p>
+                    <p className="text-xs text-slate-400">{item.desc}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* WEEKLY REVIEW MODE */}
       {mode === "review" && (
         <div className="flex-1 overflow-y-auto px-4 pb-24">
@@ -158,11 +353,11 @@ export default function CoachPage() {
               </svg>
               <div>
                 <h2 className="font-semibold text-white">Portfolio Review</h2>
-                <p className="text-xs text-purple-300/70">Like a weekly check-in -- data-driven, not emotional</p>
+                <p className="text-xs text-purple-300/70">Data-driven weekly analysis, not emotional</p>
               </div>
             </div>
             <p className="text-sm text-slate-300 mb-4">
-              Your AI coach analyzes last week&apos;s weight, calories, protein, workouts, and patterns -- then delivers the single highest-leverage adjustment.
+              Analyzes last 7 days of weight, calories, protein, workouts, and patterns -- then delivers the single highest-leverage adjustment.
             </p>
             <button
               onClick={generateWeeklyReview}
@@ -180,20 +375,16 @@ export default function CoachPage() {
             </button>
           </div>
 
-          {/* Review Result */}
           {weeklyReview && (
             <div className="bg-[var(--card)] rounded-2xl p-5 mb-4">
               <div className="flex items-center gap-2 mb-3">
                 <span className="text-lg">📊</span>
                 <h3 className="font-semibold text-sm">Your Weekly Report</h3>
               </div>
-              <div className="text-sm text-slate-300 whitespace-pre-wrap leading-relaxed">
-                {weeklyReview}
-              </div>
+              <MarkdownContent text={weeklyReview} />
             </div>
           )}
 
-          {/* What the review covers */}
           {!weeklyReview && !reviewLoading && (
             <div className="space-y-3">
               <h3 className="text-xs text-slate-400 uppercase tracking-wider font-semibold">What the review covers</h3>
@@ -225,12 +416,16 @@ export default function CoachPage() {
           <div className="flex-1 overflow-y-auto px-4 pb-4 space-y-3">
             {messages.map((msg, i) => (
               <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
-                <div className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm ${
+                <div className={`max-w-[85%] rounded-2xl px-4 py-3 ${
                   msg.role === "user"
                     ? "bg-sky-600 text-white rounded-br-md"
                     : "bg-[var(--card)] text-slate-200 rounded-bl-md"
                 }`}>
-                  <p className="whitespace-pre-wrap">{msg.content}</p>
+                  {msg.role === "assistant" ? (
+                    <MarkdownContent text={msg.content} />
+                  ) : (
+                    <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
+                  )}
                 </div>
               </div>
             ))}

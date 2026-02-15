@@ -27,15 +27,17 @@ export default function FoodPage() {
   }, []);
 
   const loadData = useCallback(async () => {
-    const today = new Date().toISOString().split("T")[0];
+    const now = new Date();
+    const dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0).toISOString();
+    const dayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999).toISOString();
 
     const [{ data: favs }, { data: logs }] = await Promise.all([
       db.from("food_favorites").select("*").order("sort_order"),
       db
         .from("food_logs")
         .select("*")
-        .gte("timestamp", `${today}T00:00:00`)
-        .lte("timestamp", `${today}T23:59:59`)
+        .gte("timestamp", dayStart)
+        .lte("timestamp", dayEnd)
         .order("timestamp", { ascending: false }),
     ]);
 

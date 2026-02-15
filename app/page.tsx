@@ -8,7 +8,18 @@ import WaterTracker from "@/components/WaterTracker";
 import type { FoodLog, Workout, WaterLog, Streak, WeightLog, FoodFavorite } from "@/lib/types";
 
 function getToday() {
-  return new Date().toISOString().split("T")[0];
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+}
+
+// Returns UTC ISO strings for the start and end of the LOCAL day.
+// This is critical: the DB stores TIMESTAMPTZ in UTC, so we need
+// local midnight → UTC for correct day boundaries.
+function getTodayRange() {
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+  const end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+  return { start: start.toISOString(), end: end.toISOString() };
 }
 
 function getGreeting() {
@@ -62,17 +73,20 @@ export default function TodayPage() {
   const [favorites, setFavorites] = useState<FoodFavorite[]>([]);
   const [loading, setLoading] = useState(true);
   const [hasMeals, setHasMeals] = useState(false);
+  const [goalWeight, setGoalWeight] = useState(185);
+  const [startWeight, setStartWeight] = useState(220);
 
   const loadDashboardData = useCallback(async () => {
     const today = getToday();
+    const { start: todayStart, end: todayEnd } = getTodayRange();
 
     try {
       // Load today's food logs
       const { data: foodLogs } = await db
         .from("food_logs")
         .select("*")
-        .gte("timestamp", `${today}T00:00:00`)
-        .lte("timestamp", `${today}T23:59:59`)
+        .gte("timestamp", todayStart)
+        .lte("timestamp", todayEnd)
         .order("timestamp", { ascending: true });
 
       if (foodLogs) {
@@ -96,8 +110,8 @@ export default function TodayPage() {
       const { data: waterLogs } = await db
         .from("water_logs")
         .select("*")
-        .gte("timestamp", `${today}T00:00:00`)
-        .lte("timestamp", `${today}T23:59:59`);
+        .gte("timestamp", todayStart)
+        .lte("timestamp", todayEnd);
 
       if (waterLogs) {
         setWaterOz(
@@ -128,8 +142,8 @@ export default function TodayPage() {
       const { data: todayWeight } = await db
         .from("weight_logs")
         .select("id")
-        .gte("timestamp", `${today}T00:00:00`)
-        .lte("timestamp", `${today}T23:59:59`)
+        .gte("timestamp", todayStart)
+        .lte("timestamp", todayEnd)
         .limit(1);
 
       setHasLoggedWeight(!!todayWeight && todayWeight.length > 0);
@@ -138,8 +152,8 @@ export default function TodayPage() {
       const { data: workouts } = await db
         .from("workouts")
         .select("*")
-        .gte("timestamp", `${today}T00:00:00`)
-        .lte("timestamp", `${today}T23:59:59`);
+        .gte("timestamp", todayStart)
+        .lte("timestamp", todayEnd);
 
       if (workouts) setTodayWorkouts(workouts as Workout[]);
 
@@ -169,6 +183,18 @@ export default function TodayPage() {
   useEffect(() => {
     loadDashboardData();
   }, [loadDashboardData]);
+
+  // Load configurable goal/start weight
+  useEffect(() => {
+    const savedStart = localStorage.getItem("startWeight");
+    if (savedStart && !isNaN(parseFloat(savedStart))) setStartWeight(parseFloat(savedStart));
+
+    db.from("profiles").select("goal_weight").limit(1).single().then(({ data }) => {
+      if (data && (data as { goal_weight: number }).goal_weight) {
+        setGoalWeight(Number((data as { goal_weight: number }).goal_weight));
+      }
+    });
+  }, []);
 
   const addWater = async (oz: number) => {
     const { error } = await db.from("water_logs").insert({ amount_oz: oz });
@@ -218,8 +244,6 @@ export default function TodayPage() {
   }
 
   const caloriesRemaining = calorieTarget - caloriesConsumed;
-  const goalWeight = 185;
-  const startWeight = 220;
   const poundsLost = currentWeight ? startWeight - currentWeight : 0;
   const poundsToGo = currentWeight ? currentWeight - goalWeight : startWeight - goalWeight;
   const totalCaloriesBurned = todayWorkouts.reduce((sum, w) => sum + w.calories_burned, 0);
@@ -286,7 +310,7 @@ export default function TodayPage() {
       icon: "📊",
       label: "Daily review with coach",
       done: false, // always available in evening
-      href: "/coach",
+      href: "/coach?tab=daily",
     },
   ];
 
@@ -451,21 +475,21 @@ export default function TodayPage() {
 
       {/* Quick Stats Row */}
       <div className="grid grid-cols-3 gap-3 mb-4">
-        <div className="bg-[var(--card)] rounded-xl p-3 text-center">
+        <Link href="/track?type=weight" className="bg-[var(--card)] rounded-xl p-3 text-center card-press hover:border-slate-500 transition-colors">
           <p className="text-xs text-slate-400 mb-1">Weight</p>
           <p className="text-lg font-bold">{currentWeight ? `${currentWeight}` : "---"}</p>
-          <p className="text-[10px] text-slate-500">{poundsToGo > 0 ? `${poundsToGo} to go` : "Goal!"}</p>
-        </div>
-        <div className="bg-[var(--card)] rounded-xl p-3 text-center">
+          <p className="text-[10px] text-slate-500">{poundsToGo > 0 ? `${poundsToGo.toFixed(1)} to go` : "Goal!"}</p>
+        </Link>
+        <Link href="/track?type=workout" className="bg-[var(--card)] rounded-xl p-3 text-center card-press hover:border-slate-500 transition-colors">
           <p className="text-xs text-slate-400 mb-1">Workouts</p>
           <p className="text-lg font-bold">{todayWorkouts.length}</p>
           <p className="text-[10px] text-slate-500">{totalCaloriesBurned > 0 ? `${totalCaloriesBurned} cal` : "today"}</p>
-        </div>
-        <div className="bg-[var(--card)] rounded-xl p-3 text-center">
+        </Link>
+        <Link href="/track?type=mobility" className="bg-[var(--card)] rounded-xl p-3 text-center card-press hover:border-slate-500 transition-colors">
           <p className="text-xs text-slate-400 mb-1">Mobility</p>
           <p className="text-lg font-bold">{mobilityDone ? "✓" : "—"}</p>
           <p className="text-[10px] text-slate-500">{mobilityDone ? "done" : "pending"}</p>
-        </div>
+        </Link>
       </div>
 
       {/* Water Tracker */}

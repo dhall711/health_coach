@@ -1,10 +1,25 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
+import Link from "next/link";
 import { db } from "@/lib/db";
 import type { FoodFavorite, FoodLog, FoodAnalysisResult, MealType, WorkoutType } from "@/lib/types";
 
 type TrackType = "food" | "weight" | "workout" | "water" | "mobility" | "selfie";
+
+// Deduplicated food item from recent history (past 10 days)
+interface RecentFoodItem {
+  key: string;          // dedupe key (item names joined)
+  name: string;         // display name
+  meal_type: MealType;
+  calories: number;
+  protein_g: number;
+  carbs_g: number;
+  fat_g: number;
+  items: FoodLog["items"];
+  lastEaten: string;    // ISO timestamp of most recent occurrence
+  count: number;        // how many times eaten in the window
+}
 
 export default function TrackPage() {
   const [activeType, setActiveType] = useState<TrackType>("food");
@@ -20,6 +35,12 @@ export default function TrackPage() {
   const [correctionText, setCorrectionText] = useState("");
   const [showCorrection, setShowCorrection] = useState(false);
   const [editingResult, setEditingResult] = useState(false);
+  const [editingLogId, setEditingLogId] = useState<string | null>(null);
+  const [editCalories, setEditCalories] = useState("");
+  const [editProtein, setEditProtein] = useState("");
+  const [editCarbs, setEditCarbs] = useState("");
+  const [editFat, setEditFat] = useState("");
+  const [recentHistory, setRecentHistory] = useState<RecentFoodItem[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Workout form
@@ -42,20 +63,74 @@ export default function TrackPage() {
   }, []);
 
   const loadData = useCallback(async () => {
-    const today = new Date().toISOString().split("T")[0];
+    // Compute local day boundaries as UTC ISO strings
+    const now = new Date();
+    const dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0).toISOString();
+    const dayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999).toISOString();
 
-    const [{ data: favs }, { data: logs }] = await Promise.all([
+    // Past 10 days (excluding today) for recent history
+    const historyStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 10, 0, 0, 0, 0).toISOString();
+    const historyEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 23, 59, 59, 999).toISOString();
+
+    const [{ data: favs }, { data: logs }, { data: historyLogs }] = await Promise.all([
       db.from("food_favorites").select("*").order("sort_order"),
       db
         .from("food_logs")
         .select("*")
-        .gte("timestamp", `${today}T00:00:00`)
-        .lte("timestamp", `${today}T23:59:59`)
+        .gte("timestamp", dayStart)
+        .lte("timestamp", dayEnd)
+        .order("timestamp", { ascending: false }),
+      db
+        .from("food_logs")
+        .select("*")
+        .gte("timestamp", historyStart)
+        .lte("timestamp", historyEnd)
         .order("timestamp", { ascending: false }),
     ]);
 
     if (favs) setFavorites(favs as FoodFavorite[]);
     if (logs) setRecentEntries(logs as FoodLog[]);
+
+    // Deduplicate history by item names
+    if (historyLogs && historyLogs.length > 0) {
+      const histMap = new Map<string, RecentFoodItem>();
+      for (const log of historyLogs as FoodLog[]) {
+        const itemNames = log.items && Array.isArray(log.items)
+          ? (log.items as Array<{ name: string }>).map((i) => i.name).join(", ")
+          : log.meal_type;
+        const key = itemNames.toLowerCase().trim();
+        if (histMap.has(key)) {
+          const existing = histMap.get(key)!;
+          existing.count += 1;
+          // Keep the most recent occurrence's data
+          if (log.timestamp > existing.lastEaten) {
+            existing.lastEaten = log.timestamp;
+          }
+        } else {
+          histMap.set(key, {
+            key,
+            name: itemNames,
+            meal_type: log.meal_type as MealType,
+            calories: log.total_calories,
+            protein_g: log.protein_g,
+            carbs_g: log.carbs_g,
+            fat_g: log.fat_g,
+            items: log.items,
+            lastEaten: log.timestamp,
+            count: 1,
+          });
+        }
+      }
+      // Sort by most recently eaten, then by frequency
+      const deduped = Array.from(histMap.values()).sort((a, b) => {
+        // Frequent items first, then by recency
+        if (b.count !== a.count) return b.count - a.count;
+        return b.lastEaten.localeCompare(a.lastEaten);
+      });
+      setRecentHistory(deduped);
+    } else {
+      setRecentHistory([]);
+    }
   }, []);
 
   useEffect(() => {
@@ -251,6 +326,97 @@ export default function TrackPage() {
     if (!error) showSuccess(`+${oz}oz water`);
   };
 
+  // --- Delete food log ---
+  const deleteFoodLog = async (id: string) => {
+    if (!confirm("Delete this food entry?")) return;
+    const { error } = await db.from("food_logs").delete().eq("id", id);
+    if (!error) {
+      showSuccess("Entry deleted");
+      loadData();
+    }
+  };
+
+  // --- Start editing a food log ---
+  const startEditLog = (log: FoodLog) => {
+    setEditingLogId(log.id);
+    setEditCalories(String(log.total_calories || 0));
+    setEditProtein(String(log.protein_g || 0));
+    setEditCarbs(String(log.carbs_g || 0));
+    setEditFat(String(log.fat_g || 0));
+  };
+
+  // --- Save edited food log ---
+  const saveEditLog = async (id: string) => {
+    const { error } = await db.from("food_logs").update({
+      total_calories: parseInt(editCalories) || 0,
+      protein_g: parseInt(editProtein) || 0,
+      carbs_g: parseInt(editCarbs) || 0,
+      fat_g: parseInt(editFat) || 0,
+    }).eq("id", id);
+    if (!error) {
+      setEditingLogId(null);
+      showSuccess("Entry updated");
+      loadData();
+    }
+  };
+
+  // --- Save food log as favorite ---
+  const saveAsFavorite = async (log: FoodLog) => {
+    const itemNames = log.items && Array.isArray(log.items)
+      ? (log.items as Array<{ name: string }>).map((i) => i.name).join(", ")
+      : log.meal_type;
+    const { error } = await db.from("food_favorites").insert({
+      name: itemNames.length > 30 ? itemNames.substring(0, 27) + "..." : itemNames,
+      icon: log.meal_type === "breakfast" ? "🌅" : log.meal_type === "lunch" ? "☀️" : log.meal_type === "dinner" ? "🌙" : log.meal_type === "drink" ? "🥤" : "🍽️",
+      default_calories: log.total_calories,
+      default_protein_g: log.protein_g,
+      default_carbs_g: log.carbs_g,
+      default_fat_g: log.fat_g,
+      meal_type: log.meal_type,
+      sort_order: favorites.length,
+    });
+    if (!error) {
+      showSuccess("Saved as favorite!");
+      loadData();
+    }
+  };
+
+  // --- Re-log from recent history ---
+  const reLogFromHistory = async (item: RecentFoodItem) => {
+    const { error } = await db.from("food_logs").insert({
+      meal_type: item.meal_type,
+      items: item.items,
+      total_calories: item.calories,
+      protein_g: item.protein_g,
+      carbs_g: item.carbs_g,
+      fat_g: item.fat_g,
+      input_method: "favorite" as const,
+      confirmed: true,
+    });
+    if (!error) {
+      showSuccess(`${item.name} logged (${item.calories} cal)`);
+      loadData();
+    }
+  };
+
+  // --- Save history item as favorite ---
+  const saveHistoryAsFavorite = async (item: RecentFoodItem) => {
+    const { error } = await db.from("food_favorites").insert({
+      name: item.name.length > 30 ? item.name.substring(0, 27) + "..." : item.name,
+      icon: item.meal_type === "breakfast" ? "🌅" : item.meal_type === "lunch" ? "☀️" : item.meal_type === "dinner" ? "🌙" : item.meal_type === "drink" ? "🥤" : "🍽️",
+      default_calories: item.calories,
+      default_protein_g: item.protein_g,
+      default_carbs_g: item.carbs_g,
+      default_fat_g: item.fat_g,
+      meal_type: item.meal_type,
+      sort_order: favorites.length,
+    });
+    if (!error) {
+      showSuccess("Saved as favorite!");
+      loadData();
+    }
+  };
+
   // --- Log selfie ---
   const selfieInputRef = useRef<HTMLInputElement>(null);
   const handleSelfie = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -286,12 +452,19 @@ export default function TrackPage() {
   return (
     <div className="max-w-lg mx-auto px-4 pt-6 safe-top page-enter">
       {/* Header */}
-      <div className="mb-4">
+      <div className="flex items-center gap-3 mb-4">
+        <Link href="/" className="w-8 h-8 bg-[var(--card)] rounded-full flex items-center justify-center text-slate-400 hover:text-white transition-colors flex-shrink-0">
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" d="m2.25 12 8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25" />
+          </svg>
+        </Link>
+        <div>
         <h1 className="text-xl font-bold text-white">Track</h1>
         <p className="text-xs text-slate-400">
           Log anything in under 5 seconds
           {todayCalories > 0 && ` · ${todayCalories} cal today`}
         </p>
+        </div>
       </div>
 
       {/* Success banner */}
@@ -566,6 +739,78 @@ export default function TrackPage() {
                   )}
                 </div>
               )}
+
+              {/* Recent History (past 10 days) */}
+              {recentHistory.length > 0 && (
+                <div className="mt-5">
+                  <h2 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-2">
+                    Recent Foods (Past 10 Days)
+                  </h2>
+                  <div className="space-y-1.5">
+                    {recentHistory.map((item) => {
+                      const daysAgo = Math.round(
+                        (Date.now() - new Date(item.lastEaten).getTime()) / (1000 * 60 * 60 * 24)
+                      );
+                      const isFav = favorites.some(
+                        (f) => f.name.toLowerCase() === item.name.toLowerCase().substring(0, 30)
+                          || f.name.toLowerCase() === (item.name.length > 30 ? item.name.substring(0, 27).toLowerCase() + "..." : item.name.toLowerCase())
+                      );
+                      return (
+                        <div
+                          key={item.key}
+                          className="bg-[var(--card)] rounded-lg px-3 py-2.5 flex items-center gap-2"
+                        >
+                          {/* Icon */}
+                          <span className="text-sm flex-shrink-0">
+                            {item.meal_type === "breakfast" ? "🌅" : item.meal_type === "lunch" ? "☀️" : item.meal_type === "dinner" ? "🌙" : item.meal_type === "drink" ? "🥤" : "🍽️"}
+                          </span>
+
+                          {/* Info */}
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-medium truncate">{item.name}</p>
+                            <p className="text-[10px] text-slate-500">
+                              {item.calories} cal · P:{item.protein_g}g C:{item.carbs_g}g F:{item.fat_g}g
+                              {item.count > 1 && <span className="ml-1 text-sky-400">· {item.count}x</span>}
+                              <span className="ml-1">· {daysAgo === 1 ? "yesterday" : `${daysAgo}d ago`}</span>
+                            </p>
+                          </div>
+
+                          {/* Actions */}
+                          <div className="flex items-center gap-1 flex-shrink-0">
+                            {/* Quick re-add */}
+                            <button
+                              onClick={() => reLogFromHistory(item)}
+                              title="Log again today"
+                              className="px-2.5 py-1 bg-green-600/80 hover:bg-green-600 text-white rounded-lg text-[10px] font-semibold transition-colors"
+                            >
+                              + Log
+                            </button>
+                            {/* Save as favorite (only show if not already a fav) */}
+                            {!isFav && (
+                              <button
+                                onClick={() => saveHistoryAsFavorite(item)}
+                                title="Save as favorite"
+                                className="p-1.5 text-slate-500 hover:text-amber-400 transition-colors"
+                              >
+                                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M11.48 3.499a.562.562 0 0 1 1.04 0l2.125 5.111a.563.563 0 0 0 .475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 0 0-.182.557l1.285 5.385a.562.562 0 0 1-.84.61l-4.725-2.885a.562.562 0 0 0-.586 0L6.982 20.54a.562.562 0 0 1-.84-.61l1.285-5.386a.562.562 0 0 0-.182-.557l-4.204-3.602a.562.562 0 0 1 .321-.988l5.518-.442a.563.563 0 0 0 .475-.345L11.48 3.5Z" />
+                                </svg>
+                              </button>
+                            )}
+                            {isFav && (
+                              <span className="p-1.5 text-amber-400" title="Already a favorite">
+                                <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
+                                  <path d="M11.48 3.499a.562.562 0 0 1 1.04 0l2.125 5.111a.563.563 0 0 0 .475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 0 0-.182.557l1.285 5.385a.562.562 0 0 1-.84.61l-4.725-2.885a.562.562 0 0 0-.586 0L6.982 20.54a.562.562 0 0 1-.84-.61l1.285-5.386a.562.562 0 0 0-.182-.557l-4.204-3.602a.562.562 0 0 1 .321-.988l5.518-.442a.563.563 0 0 0 .475-.345L11.48 3.5Z" />
+                                </svg>
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </>
           )}
         </div>
@@ -700,24 +945,77 @@ export default function TrackPage() {
             Today&apos;s Food Log
           </h2>
           <div className="space-y-2">
-            {recentEntries.slice(0, 5).map((log) => (
-              <div key={log.id} className="bg-[var(--card)] rounded-lg px-4 py-2.5 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm">
-                    {log.meal_type === "breakfast" ? "🌅" : log.meal_type === "lunch" ? "☀️" : log.meal_type === "dinner" ? "🌙" : log.meal_type === "drink" ? "🥤" : "🍽️"}
-                  </span>
-                  <div>
-                    <p className="text-xs font-medium">
+            {recentEntries.map((log) => (
+              <div key={log.id} className="bg-[var(--card)] rounded-lg overflow-hidden">
+                {editingLogId === log.id ? (
+                  /* Inline edit mode */
+                  <div className="px-4 py-3">
+                    <p className="text-xs text-slate-400 mb-2">
                       {log.items && Array.isArray(log.items)
                         ? (log.items as Array<{ name: string }>).map((i) => i.name).join(", ")
                         : log.meal_type}
                     </p>
-                    <p className="text-[10px] text-slate-500">
-                      {new Date(log.timestamp).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
-                    </p>
+                    <div className="grid grid-cols-4 gap-2 mb-2">
+                      <div>
+                        <label className="text-[10px] text-slate-500 block">Cal</label>
+                        <input type="number" value={editCalories} onChange={(e) => setEditCalories(e.target.value)} className="w-full bg-slate-700 rounded px-2 py-1.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-sky-500" />
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-slate-500 block">Protein</label>
+                        <input type="number" value={editProtein} onChange={(e) => setEditProtein(e.target.value)} className="w-full bg-slate-700 rounded px-2 py-1.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-sky-500" />
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-slate-500 block">Carbs</label>
+                        <input type="number" value={editCarbs} onChange={(e) => setEditCarbs(e.target.value)} className="w-full bg-slate-700 rounded px-2 py-1.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-sky-500" />
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-slate-500 block">Fat</label>
+                        <input type="number" value={editFat} onChange={(e) => setEditFat(e.target.value)} className="w-full bg-slate-700 rounded px-2 py-1.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-sky-500" />
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <button onClick={() => saveEditLog(log.id)} className="flex-1 bg-green-600 text-white py-1.5 rounded-lg text-xs font-semibold">Save</button>
+                      <button onClick={() => setEditingLogId(null)} className="bg-slate-700 text-slate-400 px-3 py-1.5 rounded-lg text-xs">Cancel</button>
+                    </div>
                   </div>
-                </div>
-                <span className="text-xs font-semibold">{log.total_calories} cal</span>
+                ) : (
+                  /* Normal display */
+                  <div className="px-4 py-2.5 flex items-center justify-between">
+                    <div className="flex items-center gap-2 flex-1 min-w-0">
+                      <span className="text-sm">
+                        {log.meal_type === "breakfast" ? "🌅" : log.meal_type === "lunch" ? "☀️" : log.meal_type === "dinner" ? "🌙" : log.meal_type === "drink" ? "🥤" : "🍽️"}
+                      </span>
+                      <div className="min-w-0">
+                        <p className="text-xs font-medium truncate">
+                          {log.items && Array.isArray(log.items)
+                            ? (log.items as Array<{ name: string }>).map((i) => i.name).join(", ")
+                            : log.meal_type}
+                        </p>
+                        <p className="text-[10px] text-slate-500">
+                          {new Date(log.timestamp).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                      <span className="text-xs font-semibold">{log.total_calories} cal</span>
+                      <button onClick={() => saveAsFavorite(log)} title="Save as favorite" className="p-1 text-slate-500 hover:text-amber-400 transition-colors">
+                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M11.48 3.499a.562.562 0 0 1 1.04 0l2.125 5.111a.563.563 0 0 0 .475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 0 0-.182.557l1.285 5.385a.562.562 0 0 1-.84.61l-4.725-2.885a.562.562 0 0 0-.586 0L6.982 20.54a.562.562 0 0 1-.84-.61l1.285-5.386a.562.562 0 0 0-.182-.557l-4.204-3.602a.562.562 0 0 1 .321-.988l5.518-.442a.563.563 0 0 0 .475-.345L11.48 3.5Z" />
+                        </svg>
+                      </button>
+                      <button onClick={() => startEditLog(log)} title="Edit" className="p-1 text-slate-500 hover:text-sky-400 transition-colors">
+                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125" />
+                        </svg>
+                      </button>
+                      <button onClick={() => deleteFoodLog(log.id)} title="Delete" className="p-1 text-slate-500 hover:text-red-400 transition-colors">
+                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             ))}
           </div>

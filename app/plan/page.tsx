@@ -4,6 +4,32 @@ import { useState, useEffect } from "react";
 import { generateWeeklyPlan, generateGroceryList, type DayPlan, type MealTemplate } from "@/lib/mealPlanner";
 import Link from "next/link";
 
+type DayOfWeek = "Monday" | "Tuesday" | "Wednesday" | "Thursday" | "Friday" | "Saturday" | "Sunday";
+type WorkoutDayType = "amt885" | "mobility" | "rest" | "walk";
+
+interface WorkoutScheduleDay {
+  day: DayOfWeek;
+  type: WorkoutDayType;
+  description: string;
+}
+
+const DEFAULT_SCHEDULE: WorkoutScheduleDay[] = [
+  { day: "Monday", type: "amt885", description: "AMT 885 (30-45 min) + Mobility" },
+  { day: "Tuesday", type: "mobility", description: "Mobility routine (5-10 min)" },
+  { day: "Wednesday", type: "amt885", description: "AMT 885 (30-45 min) + Mobility" },
+  { day: "Thursday", type: "mobility", description: "Mobility routine (5-10 min)" },
+  { day: "Friday", type: "amt885", description: "AMT 885 (30-45 min) + Mobility" },
+  { day: "Saturday", type: "rest", description: "Rest & recovery" },
+  { day: "Sunday", type: "rest", description: "Rest & recovery" },
+];
+
+const WORKOUT_OPTIONS: { type: WorkoutDayType; icon: string; label: string; desc: string }[] = [
+  { type: "amt885", icon: "🏃", label: "AMT 885", desc: "AMT 885 (30-45 min) + Mobility" },
+  { type: "mobility", icon: "🧘", label: "Mobility", desc: "Mobility routine (5-10 min)" },
+  { type: "walk", icon: "🚶", label: "Walk", desc: "Walk (20-30 min)" },
+  { type: "rest", icon: "😌", label: "Rest", desc: "Rest & recovery" },
+];
+
 export default function PlanPage() {
   const [tab, setTab] = useState<"meals" | "grocery" | "workouts" | "targets">("meals");
   const [weekPlan, setWeekPlan] = useState<DayPlan[]>([]);
@@ -11,13 +37,33 @@ export default function PlanPage() {
   const [checkedItems, setCheckedItems] = useState<Set<string>>(new Set());
   const [expandedDay, setExpandedDay] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
+  const [workoutSchedule, setWorkoutSchedule] = useState<WorkoutScheduleDay[]>(DEFAULT_SCHEDULE);
+  const [editingDay, setEditingDay] = useState<DayOfWeek | null>(null);
 
   useEffect(() => {
     // Generate plan on load
     const plan = generateWeeklyPlan(0);
     setWeekPlan(plan);
     setGroceryList(generateGroceryList(plan));
+
+    // Load saved workout schedule
+    const saved = localStorage.getItem("workoutSchedule");
+    if (saved) {
+      try {
+        setWorkoutSchedule(JSON.parse(saved));
+      } catch { /* use default */ }
+    }
   }, []);
+
+  const updateDayType = (day: DayOfWeek, type: WorkoutDayType) => {
+    const option = WORKOUT_OPTIONS.find((o) => o.type === type);
+    const newSchedule = workoutSchedule.map((d) =>
+      d.day === day ? { ...d, type, description: option?.desc || "" } : d
+    );
+    setWorkoutSchedule(newSchedule);
+    localStorage.setItem("workoutSchedule", JSON.stringify(newSchedule));
+    setEditingDay(null);
+  };
 
   const regeneratePlan = async () => {
     setGenerating(true);
@@ -63,9 +109,16 @@ export default function PlanPage() {
     <div className="max-w-lg mx-auto px-4 pt-6 safe-top page-enter">
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
-        <div>
-          <h1 className="text-xl font-bold text-white">Plan</h1>
-          <p className="text-xs text-slate-400">Your week, pre-decided. Just execute.</p>
+        <div className="flex items-center gap-3">
+          <Link href="/" className="w-8 h-8 bg-[var(--card)] rounded-full flex items-center justify-center text-slate-400 hover:text-white transition-colors flex-shrink-0">
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="m2.25 12 8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25" />
+            </svg>
+          </Link>
+          <div>
+            <h1 className="text-xl font-bold text-white">Plan</h1>
+            <p className="text-xs text-slate-400">Your week, pre-decided. Just execute.</p>
+          </div>
         </div>
         <button
           onClick={regeneratePlan}
@@ -169,33 +222,59 @@ export default function PlanPage() {
       {tab === "workouts" && (
         <div className="space-y-3">
           <p className="text-xs text-slate-400 mb-2">
-            Suggested workout schedule. Connect Google Calendar to auto-fill gaps.
+            Tap any day to change the workout type. Your schedule is saved automatically.
           </p>
 
-          {["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"].map((day) => {
-            const isWorkoutDay = ["Monday", "Wednesday", "Friday"].includes(day);
-            const isMobilityOnly = ["Tuesday", "Thursday"].includes(day);
-            const isRest = ["Saturday", "Sunday"].includes(day);
+          {workoutSchedule.map((schedDay) => {
+            const option = WORKOUT_OPTIONS.find((o) => o.type === schedDay.type);
+            const isRest = schedDay.type === "rest";
 
             return (
-              <div key={day} className={`bg-[var(--card)] rounded-xl p-4 flex items-center justify-between ${isRest ? "opacity-60" : ""}`}>
-                <div className="flex items-center gap-3">
-                  <span className="text-xl">
-                    {isWorkoutDay ? "🏃" : isMobilityOnly ? "🧘" : "😌"}
-                  </span>
-                  <div>
-                    <p className="font-medium text-sm">{day}</p>
-                    <p className="text-xs text-slate-400">
-                      {isWorkoutDay ? "AMT 885 (30-45 min) + Mobility" :
-                       isMobilityOnly ? "Mobility routine (5-10 min)" :
-                       "Rest & recovery"}
-                    </p>
+              <div key={schedDay.day} className="bg-[var(--card)] rounded-xl overflow-hidden">
+                <div
+                  className={`p-4 flex items-center justify-between cursor-pointer ${isRest ? "opacity-60" : ""}`}
+                  onClick={() => setEditingDay(editingDay === schedDay.day ? null : schedDay.day)}
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="text-xl">{option?.icon || "😌"}</span>
+                    <div>
+                      <p className="font-medium text-sm">{schedDay.day}</p>
+                      <p className="text-xs text-slate-400">{schedDay.description}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {!isRest && (
+                      <Link
+                        href="/track?type=workout"
+                        onClick={(e) => e.stopPropagation()}
+                        className="text-xs text-sky-400 hover:text-sky-300"
+                      >
+                        Log
+                      </Link>
+                    )}
+                    <svg className={`w-4 h-4 text-slate-500 transition-transform ${editingDay === schedDay.day ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
+                    </svg>
                   </div>
                 </div>
-                {!isRest && (
-                  <Link href="/track?type=workout" className="text-xs text-sky-400 hover:text-sky-300">
-                    Log
-                  </Link>
+
+                {editingDay === schedDay.day && (
+                  <div className="px-4 pb-4 pt-2 border-t border-slate-700/50 flex flex-wrap gap-2">
+                    {WORKOUT_OPTIONS.map((opt) => (
+                      <button
+                        key={opt.type}
+                        onClick={() => updateDayType(schedDay.day, opt.type)}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                          schedDay.type === opt.type
+                            ? "bg-sky-600 text-white"
+                            : "bg-slate-700 text-slate-300 hover:bg-slate-600"
+                        }`}
+                      >
+                        <span>{opt.icon}</span>
+                        <span>{opt.label}</span>
+                      </button>
+                    ))}
+                  </div>
                 )}
               </div>
             );

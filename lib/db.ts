@@ -9,7 +9,7 @@ type FilterOp = "eq" | "gte" | "lte";
 
 interface QueryDescriptor {
   table: string;
-  operation: "select" | "insert" | "update" | "upsert";
+  operation: "select" | "insert" | "update" | "upsert" | "delete";
   columns?: string;
   filters?: { column: string; op: FilterOp; value: unknown }[];
   order?: { column: string; ascending: boolean }[];
@@ -18,6 +18,7 @@ interface QueryDescriptor {
   data?: Record<string, unknown> | Record<string, unknown>[];
   upsertOptions?: { onConflict?: string };
   updateFilters?: { column: string; op: FilterOp; value: unknown }[];
+  deleteFilters?: { column: string; op: FilterOp; value: unknown }[];
 }
 
 interface QueryResult {
@@ -63,6 +64,12 @@ class TableBuilder {
     this.desc.data = data;
     this.desc.upsertOptions = options;
     return execute(this.desc);
+  }
+
+  delete(): DeleteChain {
+    this.desc.operation = "delete";
+    this.desc.deleteFilters = [];
+    return new DeleteChain(this.desc);
   }
 }
 
@@ -125,6 +132,29 @@ class UpdateChain implements PromiseLike<QueryResult> {
 
   eq(column: string, value: unknown): UpdateChain {
     this.desc.updateFilters!.push({ column, op: "eq", value });
+    return this;
+  }
+
+  then<TResult1 = QueryResult, TResult2 = never>(
+    onfulfilled?:
+      | ((value: QueryResult) => TResult1 | PromiseLike<TResult1>)
+      | null,
+    onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null
+  ): Promise<TResult1 | TResult2> {
+    return execute(this.desc).then(onfulfilled, onrejected);
+  }
+}
+
+class DeleteChain implements PromiseLike<QueryResult> {
+  private desc: QueryDescriptor;
+
+  constructor(desc: QueryDescriptor) {
+    this.desc = desc;
+    this.desc.deleteFilters = this.desc.deleteFilters || [];
+  }
+
+  eq(column: string, value: unknown): DeleteChain {
+    this.desc.deleteFilters!.push({ column, op: "eq", value });
     return this;
   }
 

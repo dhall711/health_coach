@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { db } from "@/lib/db";
 import type { Profile } from "@/lib/types";
@@ -28,28 +28,8 @@ export default function SettingsPage() {
   const [syncing, setSyncing] = useState<string | null>(null);
   const [syncResult, setSyncResult] = useState<{ provider: string; message: string; success: boolean } | null>(null);
 
-  // TrendWeight import state
-  const [importing, setImporting] = useState(false);
-  const [importResult, setImportResult] = useState<{
-    success?: boolean;
-    imported?: number;
-    skipped?: number;
-    errors?: number;
-    dateRange?: { earliest: string; latest: string };
-    error?: string;
-  } | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  // Precor import state
-  const [precorImporting, setPrecorImporting] = useState(false);
-  const [precorResult, setPrecorResult] = useState<{
-    success?: boolean;
-    imported?: number;
-    skipped?: number;
-    total?: number;
-    error?: string;
-  } | null>(null);
-  const precorFileRef = useRef<HTMLInputElement>(null);
+  // Start weight state
+  const [startWeight, setStartWeight] = useState("");
 
   // Apple Health webhook secret display
   const [showWebhookUrl, setShowWebhookUrl] = useState(false);
@@ -155,48 +135,15 @@ export default function SettingsPage() {
     }
   };
 
-  const handleTrendWeightImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setImporting(true);
-    setImportResult(null);
-    try {
-      const text = await file.text();
-      const res = await fetch("/api/import/trendweight", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ csvData: text }),
-      });
-      const result = await res.json();
-      setImportResult(result);
-    } catch {
-      setImportResult({ error: "Failed to read or upload file." });
-    } finally {
-      setImporting(false);
-      if (fileInputRef.current) fileInputRef.current.value = "";
-    }
-  };
+  // Load start weight from localStorage
+  useEffect(() => {
+    const saved = localStorage.getItem("startWeight");
+    if (saved) setStartWeight(saved);
+  }, []);
 
-  const handlePrecorImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setPrecorImporting(true);
-    setPrecorResult(null);
-    try {
-      const text = await file.text();
-      const res = await fetch("/api/integrations/precor/import", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ csvData: text }),
-      });
-      const result = await res.json();
-      setPrecorResult(result);
-    } catch {
-      setPrecorResult({ error: "Failed to read or upload file." });
-    } finally {
-      setPrecorImporting(false);
-      if (precorFileRef.current) precorFileRef.current.value = "";
-    }
+  const saveStartWeight = (val: string) => {
+    setStartWeight(val);
+    localStorage.setItem("startWeight", val);
   };
 
   const handleDisconnect = async (provider: "google" | "withings") => {
@@ -507,131 +454,52 @@ export default function SettingsPage() {
             )}
           </div>
 
-          {/* --- Precor Preva --- */}
-          <div className="bg-[var(--card)] border border-slate-700 rounded-xl p-4">
-            <div className="flex items-center gap-3 mb-2">
-              <span className="text-xl">🏃</span>
-              <div className="flex-1">
-                <p className="text-sm font-semibold">Precor Preva</p>
-                <p className="text-xs text-slate-400">Import AMT 885 workout data</p>
-              </div>
-              {integrations?.precor.lastSync ? (
-                <span className="text-[10px] font-medium text-emerald-400 bg-emerald-900/30 px-2 py-0.5 rounded-full">Imported</span>
-              ) : (
-                <span className="text-[10px] font-medium text-slate-500 bg-slate-700 px-2 py-0.5 rounded-full">No data</span>
-              )}
-            </div>
-
-            <p className="text-xs text-slate-500 mb-2">
-              Export workout history from my.preva.com as CSV, then upload here.
-              Format: Date, Duration (min), Calories, Avg HR, Distance
-            </p>
-
-            <input type="file" accept=".csv,.txt" ref={precorFileRef} onChange={handlePrecorImport} className="hidden" />
-
-            <button
-              onClick={() => precorFileRef.current?.click()}
-              disabled={precorImporting}
-              className="w-full bg-orange-600 text-white py-2.5 rounded-lg text-sm font-semibold active:opacity-80 disabled:opacity-50 flex items-center justify-center gap-2"
-            >
-              {precorImporting ? (
-                <>
-                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  Importing...
-                </>
-              ) : (
-                <>
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5" />
-                  </svg>
-                  Upload Preva CSV
-                </>
-              )}
-            </button>
-
-            {precorResult && (
-              <div className={`mt-2 rounded-lg p-2.5 text-xs ${
-                precorResult.success
-                  ? "bg-green-900/30 border border-green-700/40 text-green-300"
-                  : "bg-red-900/30 border border-red-700/40 text-red-300"
-              }`}>
-                {precorResult.success
-                  ? `Imported ${precorResult.imported} workouts (${precorResult.skipped} skipped).`
-                  : precorResult.error || "Import failed."}
-              </div>
-            )}
-          </div>
+          
         </div>
       </div>
 
-      {/* ============ DATA IMPORT ============ */}
+      {/* ============ GOAL SETTINGS ============ */}
       <div className="mb-6">
         <h2 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-3">
-          Data Import
+          Goal Progress
         </h2>
-
-        {/* TrendWeight Import */}
-        <div className="bg-[var(--card)] border border-slate-700 rounded-xl p-4 mb-3">
-          <div className="flex items-center gap-3 mb-2">
-            <span className="text-xl">📈</span>
-            <div className="flex-1">
-              <p className="text-sm font-semibold">TrendWeight</p>
-              <p className="text-xs text-slate-400">Import historical weight data from trendweight.com</p>
+        <div className="bg-[var(--card)] border border-slate-700 rounded-xl p-4">
+          <p className="text-xs text-slate-400 mb-3">
+            Set your starting weight to track total progress on the home page.
+          </p>
+          <div className="grid grid-cols-3 gap-3">
+            <div>
+              <label className="text-xs text-slate-400 mb-1 block">Start Weight</label>
+              <input
+                type="number"
+                step="0.1"
+                value={startWeight}
+                onChange={(e) => saveStartWeight(e.target.value)}
+                placeholder="e.g. 220"
+                className="w-full bg-[var(--card)] border border-slate-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-[var(--accent)]"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-slate-400 mb-1 block">Goal Weight</label>
+              <input
+                type="number"
+                step="0.1"
+                value={profile.goal_weight}
+                onChange={(e) => setProfile({ ...profile, goal_weight: parseFloat(e.target.value) || 0 })}
+                className="w-full bg-[var(--card)] border border-slate-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-[var(--accent)]"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-slate-400 mb-1 block">Target Date</label>
+              <input
+                type="date"
+                value={profile.target_date}
+                onChange={(e) => setProfile({ ...profile, target_date: e.target.value })}
+                className="w-full bg-[var(--card)] border border-slate-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-[var(--accent)]"
+              />
             </div>
           </div>
-
-          <div className="text-xs text-slate-500 bg-slate-800 rounded-lg p-3 mb-3">
-            <p className="font-medium text-slate-400 mb-1">How to export:</p>
-            <ol className="list-decimal pl-4 space-y-0.5">
-              <li>Go to <a href="https://trendweight.com/export/" target="_blank" rel="noopener noreferrer" className="text-sky-400 hover:text-sky-300 underline">trendweight.com/export</a></li>
-              <li>Sign in if needed</li>
-              <li>Download the CSV file</li>
-              <li>Upload it here</li>
-            </ol>
-          </div>
-
-          <input type="file" accept=".csv,.txt" ref={fileInputRef} onChange={handleTrendWeightImport} className="hidden" />
-
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            disabled={importing}
-            className="w-full bg-sky-600 text-white py-2.5 rounded-lg text-sm font-semibold active:opacity-80 disabled:opacity-50 flex items-center justify-center gap-2"
-          >
-            {importing ? (
-              <>
-                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                Importing...
-              </>
-            ) : (
-              <>
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5" />
-                </svg>
-                Upload TrendWeight CSV
-              </>
-            )}
-          </button>
-
-          {importResult && (
-            <div className={`mt-3 rounded-lg p-3 text-sm ${
-              importResult.success
-                ? "bg-green-900/30 border border-green-700/40 text-green-300"
-                : "bg-red-900/30 border border-red-700/40 text-red-300"
-            }`}>
-              {importResult.success ? (
-                <div>
-                  <p className="font-semibold mb-1">Import successful!</p>
-                  <p className="text-xs">{importResult.imported} weight entries imported</p>
-                  {importResult.skipped ? <p className="text-xs">{importResult.skipped} rows skipped</p> : null}
-                  {importResult.dateRange && (
-                    <p className="text-xs mt-1">Range: {importResult.dateRange.earliest} to {importResult.dateRange.latest}</p>
-                  )}
-                </div>
-              ) : (
-                <p>{importResult.error || "Import failed."}</p>
-              )}
-            </div>
-          )}
+          <p className="text-xs text-slate-500 mt-2">Start weight is saved locally. Goal weight saves with your profile.</p>
         </div>
       </div>
     </div>

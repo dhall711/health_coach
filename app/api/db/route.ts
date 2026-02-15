@@ -41,7 +41,7 @@ interface OrderClause {
 
 interface QueryDescriptor {
   table: string;
-  operation: "select" | "insert" | "update" | "upsert";
+  operation: "select" | "insert" | "update" | "upsert" | "delete";
   columns?: string;
   filters?: Filter[];
   order?: OrderClause[];
@@ -50,6 +50,7 @@ interface QueryDescriptor {
   data?: Record<string, unknown> | Record<string, unknown>[];
   upsertOptions?: { onConflict?: string };
   updateFilters?: Filter[];
+  deleteFilters?: Filter[];
 }
 
 // Neon HTTP driver returns NUMERIC/DECIMAL columns as strings (for precision).
@@ -114,6 +115,8 @@ export async function POST(req: NextRequest) {
         return await handleUpdate(desc);
       case "upsert":
         return await handleUpsert(desc);
+      case "delete":
+        return await handleDelete(desc);
       default:
         return NextResponse.json(
           { data: null, error: { message: `Unknown operation: ${desc.operation}` } },
@@ -341,6 +344,29 @@ async function handleUpsert(desc: QueryDescriptor) {
 
   const upsertSql = `INSERT INTO ${desc.table} (${columns.join(", ")}) VALUES ${valuePlaceholders.join(", ")} ON CONFLICT (${conflictCol}) DO UPDATE SET ${updateCols} RETURNING *`;
   const result = coerceNumericStrings((await dbQuery(upsertSql, params)) || []);
+
+  return NextResponse.json({ data: result, error: null });
+}
+
+async function handleDelete(desc: QueryDescriptor) {
+  if (!desc.deleteFilters || desc.deleteFilters.length === 0) {
+    return NextResponse.json(
+      { data: null, error: { message: "Delete requires at least one filter (safety check)" } },
+      { status: 400 }
+    );
+  }
+
+  const params: unknown[] = [];
+  const conditions = desc.deleteFilters.map((f) => {
+    if (!isSafeIdentifier(f.column)) throw new Error(`Invalid column: ${f.column}`);
+    const sqlOp = OP_MAP[f.op];
+    if (!sqlOp) throw new Error(`Invalid operator: ${f.op}`);
+    params.push(f.value);
+    return `${f.column} ${sqlOp} $${params.length}`;
+  });
+
+  const sql = `DELETE FROM ${desc.table} WHERE ${conditions.join(" AND ")} RETURNING *`;
+  const result = coerceNumericStrings((await dbQuery(sql, params)) || []);
 
   return NextResponse.json({ data: result, error: null });
 }
