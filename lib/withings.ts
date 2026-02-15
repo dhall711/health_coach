@@ -9,10 +9,10 @@ const WITHINGS_MEASURE_URL = "https://wbsapi.withings.net/measure";
 
 function getRedirectUri() {
   if (process.env.NEXT_PUBLIC_APP_URL) {
-    return `${process.env.NEXT_PUBLIC_APP_URL}/api/integrations/withings/callback`;
+    return `${process.env.NEXT_PUBLIC_APP_URL.trim()}/api/integrations/withings/callback`;
   }
   if (process.env.VERCEL_URL) {
-    return `https://${process.env.VERCEL_URL}/api/integrations/withings/callback`;
+    return `https://${process.env.VERCEL_URL.trim()}/api/integrations/withings/callback`;
   }
   return "http://localhost:3000/api/integrations/withings/callback";
 }

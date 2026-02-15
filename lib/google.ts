@@ -11,10 +11,10 @@ const SCOPES = [
 
 function getRedirectUri() {
   if (process.env.NEXT_PUBLIC_APP_URL) {
-    return `${process.env.NEXT_PUBLIC_APP_URL}/api/integrations/google/callback`;
+    return `${process.env.NEXT_PUBLIC_APP_URL.trim()}/api/integrations/google/callback`;
   }
   if (process.env.VERCEL_URL) {
-    return `https://${process.env.VERCEL_URL}/api/integrations/google/callback`;
+    return `https://${process.env.VERCEL_URL.trim()}/api/integrations/google/callback`;
   }
   return "http://localhost:3000/api/integrations/google/callback";
 }
