@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { View, Text, ScrollView, Pressable, Alert, ActivityIndicator, StyleSheet } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -7,6 +7,30 @@ import { C, base } from "@/lib/theme";
 import ScreenHeader from "@/components/ScreenHeader";
 import { API_BASE } from "@/lib/api";
 import { generateWeeklyPlan, generateGroceryList, type DayPlan, type MealTemplate } from "@/lib/mealPlanner";
+
+interface CalendarSlot {
+  date: string;
+  dayOfWeek: string;
+  start: string;
+  end: string;
+  durationMin: number;
+  startTime: string;
+  endTime: string;
+  score: number;
+}
+
+interface CalEvent {
+  id: string;
+  summary: string;
+  start: string;
+  end: string;
+  allDay: boolean;
+}
+
+interface DaySchedule {
+  events: CalEvent[];
+  freeSlots: CalendarSlot[];
+}
 
 type PlanTab = "meals" | "grocery" | "workouts" | "targets";
 type DayOfWeek = "Monday" | "Tuesday" | "Wednesday" | "Thursday" | "Friday" | "Saturday" | "Sunday";
@@ -49,6 +73,13 @@ export default function PlanScreen() {
   const [workoutSchedule, setWorkoutSchedule] = useState<WorkoutScheduleDay[]>(DEFAULT_SCHEDULE);
   const [editingDay, setEditingDay] = useState<DayOfWeek | null>(null);
 
+  // Calendar scheduling
+  const [calConnected, setCalConnected] = useState<boolean | null>(null);
+  const [calLoading, setCalLoading] = useState(false);
+  const [topSuggestions, setTopSuggestions] = useState<CalendarSlot[]>([]);
+  const [daySchedules, setDaySchedules] = useState<Record<string, DaySchedule>>({});
+  const [scheduling, setScheduling] = useState<string | null>(null);
+
   useEffect(() => {
     const plan = generateWeeklyPlan(0);
     setWeekPlan(plan);
@@ -65,6 +96,53 @@ export default function PlanScreen() {
       }
     })();
   }, []);
+
+  const loadCalendar = useCallback(async () => {
+    setCalLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/calendar/smart-schedule?days=7`);
+      if (res.ok) {
+        const data = await res.json();
+        setCalConnected(data.connected !== false);
+        if (data.connected !== false) {
+          setDaySchedules(data.daySchedules || {});
+          setTopSuggestions(data.topSuggestions || []);
+        }
+      }
+    } catch {
+      setCalConnected(false);
+    } finally { setCalLoading(false); }
+  }, []);
+
+  useEffect(() => {
+    if (tab === "workouts" && calConnected === null) { loadCalendar(); }
+  }, [tab, calConnected, loadCalendar]);
+
+  const scheduleWorkout = async (slot: CalendarSlot) => {
+    setScheduling(slot.start);
+    try {
+      const slotStart = new Date(slot.start);
+      const workoutEnd = new Date(slotStart.getTime() + 45 * 60000);
+      const res = await fetch(`${API_BASE}/api/integrations/google/schedule`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          startTime: slotStart.toISOString(),
+          endTime: workoutEnd.toISOString(),
+          title: "Workout - AMT 885 + Mobility",
+          description: "Scheduled by Health Coach Doug",
+        }),
+      });
+      if (res.ok) {
+        Alert.alert("Booked!", "Workout added to your calendar as a private event.");
+        loadCalendar();
+      } else {
+        Alert.alert("Error", "Failed to schedule workout");
+      }
+    } catch {
+      Alert.alert("Error", "Network error");
+    } finally { setScheduling(null); }
+  };
 
   const updateDayType = async (day: DayOfWeek, type: WO) => {
     const option = WO_OPTIONS.find(o => o.type === type);
@@ -225,13 +303,64 @@ export default function PlanScreen() {
               );
             })}
 
-            {/* Calendar integration prompt */}
-            <View style={S.calendarCard}>
-              <Ionicons name="calendar-outline" size={20} color="#a78bfa" />
-              <View style={base.flex1}>
-                <Text style={{ fontSize: 13, fontWeight: "600", color: "#a78bfa" }}>Google Calendar</Text>
-                <Text style={{ fontSize: 11, color: C.textSec }}>Connect to auto-schedule workouts around meetings</Text>
+            {/* Smart Calendar Scheduling */}
+            <View style={{ marginTop: 16 }}>
+              <View style={[base.row, { gap: 6, marginBottom: 8 }]}>
+                <Ionicons name="calendar-outline" size={16} color="#a78bfa" />
+                <Text style={[base.label, { color: "#a78bfa" }]}>Smart Scheduling</Text>
               </View>
+
+              {calLoading && (
+                <View style={[base.card, { alignItems: "center", paddingVertical: 24 }]}>
+                  <ActivityIndicator color={C.accent} />
+                  <Text style={[base.caption, { marginTop: 8 }]}>Reading your calendar...</Text>
+                </View>
+              )}
+
+              {calConnected === false && !calLoading && (
+                <View style={S.calendarCard}>
+                  <Ionicons name="calendar-outline" size={20} color="#a78bfa" />
+                  <View style={base.flex1}>
+                    <Text style={{ fontSize: 13, fontWeight: "600", color: "#a78bfa" }}>Google Calendar</Text>
+                    <Text style={{ fontSize: 11, color: C.textSec }}>Connect to auto-schedule workouts around meetings</Text>
+                  </View>
+                </View>
+              )}
+
+              {calConnected && !calLoading && topSuggestions.length > 0 && (
+                <>
+                  <Text style={[base.caption, { marginBottom: 8 }]}>Best workout windows this week</Text>
+                  {topSuggestions.slice(0, 5).map(slot => (
+                    <View key={slot.start} style={S.slotCard}>
+                      <View style={S.slotIcon}>
+                        <Text style={{ fontSize: 16 }}>{slot.score >= 40 ? "🌟" : slot.score >= 25 ? "✅" : "📅"}</Text>
+                      </View>
+                      <View style={base.flex1}>
+                        <Text style={{ fontSize: 13, fontWeight: "500", color: C.text }}>{slot.dayOfWeek}</Text>
+                        <Text style={base.caption}>{slot.startTime} – {slot.endTime} · {slot.durationMin} min</Text>
+                      </View>
+                      <Pressable
+                        style={[S.bookBtn, scheduling === slot.start && { opacity: 0.5 }]}
+                        onPress={() => scheduleWorkout(slot)}
+                        disabled={scheduling === slot.start}
+                      >
+                        <Text style={{ color: "white", fontSize: 11, fontWeight: "700" }}>
+                          {scheduling === slot.start ? "..." : "Book"}
+                        </Text>
+                      </Pressable>
+                    </View>
+                  ))}
+                  <Pressable onPress={loadCalendar} style={{ alignItems: "center", paddingVertical: 8 }}>
+                    <Text style={{ fontSize: 12, color: C.textDim }}>↻ Refresh calendar</Text>
+                  </Pressable>
+                </>
+              )}
+
+              {calConnected && !calLoading && topSuggestions.length === 0 && (
+                <View style={[base.card, { alignItems: "center" }]}>
+                  <Text style={base.caption}>No open workout windows found this week</Text>
+                </View>
+              )}
             </View>
           </View>
         )}
@@ -330,6 +459,9 @@ const S = StyleSheet.create({
   woEdit: { flexDirection: "row", flexWrap: "wrap", gap: 6, paddingHorizontal: 12, paddingBottom: 12 },
   woOption: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, backgroundColor: C.cardAlt },
   woOptionActive: { backgroundColor: C.accent },
-  calendarCard: { flexDirection: "row", alignItems: "center", gap: 12, backgroundColor: "rgba(88,28,135,0.2)", borderWidth: 1, borderColor: "rgba(88,28,135,0.3)", borderRadius: 12, padding: 14, marginTop: 16 },
+  calendarCard: { flexDirection: "row", alignItems: "center", gap: 12, backgroundColor: "rgba(88,28,135,0.2)", borderWidth: 1, borderColor: "rgba(88,28,135,0.3)", borderRadius: 12, padding: 14 },
   noteCard: { backgroundColor: "rgba(14,165,233,0.1)", borderWidth: 1, borderColor: "rgba(14,165,233,0.2)", borderRadius: 12, padding: 14, marginTop: 8 },
+  slotCard: { flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: C.card, borderRadius: 12, padding: 12, marginBottom: 6 },
+  slotIcon: { width: 36, height: 36, borderRadius: 10, backgroundColor: "rgba(147,51,234,0.1)", alignItems: "center", justifyContent: "center" },
+  bookBtn: { backgroundColor: "#7c3aed", borderRadius: 8, paddingHorizontal: 14, paddingVertical: 8 },
 });

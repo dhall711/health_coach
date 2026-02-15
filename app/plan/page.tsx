@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { generateWeeklyPlan, generateGroceryList, type DayPlan, type MealTemplate } from "@/lib/mealPlanner";
 import Link from "next/link";
 
@@ -30,6 +30,30 @@ const WORKOUT_OPTIONS: { type: WorkoutDayType; icon: string; label: string; desc
   { type: "rest", icon: "😌", label: "Rest", desc: "Rest & recovery" },
 ];
 
+interface CalendarSlot {
+  date: string;
+  dayOfWeek: string;
+  start: string;
+  end: string;
+  durationMin: number;
+  startTime: string;
+  endTime: string;
+  score: number;
+}
+
+interface CalendarEvent {
+  id: string;
+  summary: string;
+  start: string;
+  end: string;
+  allDay: boolean;
+}
+
+interface DaySchedule {
+  events: CalendarEvent[];
+  freeSlots: CalendarSlot[];
+}
+
 export default function PlanPage() {
   const [tab, setTab] = useState<"meals" | "grocery" | "workouts" | "targets">("meals");
   const [weekPlan, setWeekPlan] = useState<DayPlan[]>([]);
@@ -40,13 +64,20 @@ export default function PlanPage() {
   const [workoutSchedule, setWorkoutSchedule] = useState<WorkoutScheduleDay[]>(DEFAULT_SCHEDULE);
   const [editingDay, setEditingDay] = useState<DayOfWeek | null>(null);
 
+  // Calendar scheduling state
+  const [calConnected, setCalConnected] = useState<boolean | null>(null);
+  const [calLoading, setCalLoading] = useState(false);
+  const [daySchedules, setDaySchedules] = useState<Record<string, DaySchedule>>({});
+  const [topSuggestions, setTopSuggestions] = useState<CalendarSlot[]>([]);
+  const [scheduling, setScheduling] = useState<string | null>(null);
+  const [scheduleSuccess, setScheduleSuccess] = useState<string | null>(null);
+  const [expandedCalDay, setExpandedCalDay] = useState<string | null>(null);
+
   useEffect(() => {
-    // Generate plan on load
     const plan = generateWeeklyPlan(0);
     setWeekPlan(plan);
     setGroceryList(generateGroceryList(plan));
 
-    // Load saved workout schedule
     const saved = localStorage.getItem("workoutSchedule");
     if (saved) {
       try {
@@ -54,6 +85,61 @@ export default function PlanPage() {
       } catch { /* use default */ }
     }
   }, []);
+
+  // Load calendar data when workouts tab is active
+  const loadCalendar = useCallback(async () => {
+    setCalLoading(true);
+    try {
+      const res = await fetch("/api/calendar/smart-schedule?days=7");
+      if (res.ok) {
+        const data = await res.json();
+        setCalConnected(data.connected !== false);
+        if (data.connected !== false) {
+          setDaySchedules(data.daySchedules || {});
+          setTopSuggestions(data.topSuggestions || []);
+        }
+      }
+    } catch {
+      setCalConnected(false);
+    } finally {
+      setCalLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (tab === "workouts" && calConnected === null) {
+      loadCalendar();
+    }
+  }, [tab, calConnected, loadCalendar]);
+
+  const scheduleWorkout = async (slot: CalendarSlot, workoutDuration: number = 45) => {
+    setScheduling(slot.start);
+    try {
+      const slotStart = new Date(slot.start);
+      const workoutEnd = new Date(slotStart.getTime() + workoutDuration * 60000);
+
+      const res = await fetch("/api/integrations/google/schedule", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          startTime: slotStart.toISOString(),
+          endTime: workoutEnd.toISOString(),
+          title: "Workout - AMT 885 + Mobility",
+          description: "Scheduled by Health Coach Doug. 30-45 min AMT 885 + 5-10 min mobility stretches. Remember to warm up!",
+        }),
+      });
+
+      if (res.ok) {
+        setScheduleSuccess(slot.start);
+        setTimeout(() => setScheduleSuccess(null), 3000);
+        loadCalendar(); // Refresh slots
+      }
+    } catch {
+      // Error handled silently
+    } finally {
+      setScheduling(null);
+    }
+  };
 
   const updateDayType = (day: DayOfWeek, type: WorkoutDayType) => {
     const option = WORKOUT_OPTIONS.find((o) => o.type === type);
@@ -280,19 +366,168 @@ export default function PlanPage() {
             );
           })}
 
-          <div className="bg-purple-900/20 border border-purple-700/30 rounded-xl p-4 mt-4">
-            <div className="flex items-center gap-2 mb-1">
+          {/* Smart Calendar Scheduling */}
+          <div className="mt-4">
+            <div className="flex items-center gap-2 mb-3">
               <svg className="w-4 h-4 text-purple-400" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5" />
               </svg>
-              <p className="text-sm font-semibold text-purple-300">Google Calendar</p>
+              <h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">Smart Scheduling</h3>
             </div>
-            <p className="text-xs text-slate-400">
-              Connect your calendar to auto-detect open slots around meetings and schedule workouts as private events.
-            </p>
-            <Link href="/settings" className="text-xs text-purple-400 hover:text-purple-300 mt-2 inline-block">
-              Set up in Settings →
-            </Link>
+
+            {calLoading && (
+              <div className="bg-[var(--card)] rounded-xl p-6 text-center">
+                <div className="w-6 h-6 border-2 border-purple-400 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
+                <p className="text-xs text-slate-400">Reading your calendar...</p>
+              </div>
+            )}
+
+            {calConnected === false && !calLoading && (
+              <div className="bg-purple-900/20 border border-purple-700/30 rounded-xl p-4">
+                <p className="text-sm font-semibold text-purple-300 mb-1">Google Calendar</p>
+                <p className="text-xs text-slate-400 mb-3">
+                  Connect your calendar to auto-detect open slots around meetings and schedule workouts as private events.
+                </p>
+                <Link href="/settings" className="text-xs text-purple-400 hover:text-purple-300 font-medium">
+                  Set up in Settings →
+                </Link>
+              </div>
+            )}
+
+            {calConnected && !calLoading && (
+              <>
+                {/* Top Suggestions */}
+                {topSuggestions.length > 0 && (
+                  <div className="mb-4">
+                    <p className="text-xs text-slate-500 mb-2">Best workout windows this week (based on your calendar + preferences)</p>
+                    <div className="space-y-2">
+                      {topSuggestions.slice(0, 5).map((slot) => {
+                        const isScheduled = scheduleSuccess === slot.start;
+                        const isScheduling = scheduling === slot.start;
+                        return (
+                          <div key={slot.start} className="bg-[var(--card)] rounded-xl p-3 flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                              <div className="w-10 h-10 bg-purple-500/10 rounded-lg flex items-center justify-center flex-shrink-0">
+                                <span className="text-base">
+                                  {slot.score >= 40 ? "🌟" : slot.score >= 25 ? "✅" : "📅"}
+                                </span>
+                              </div>
+                              <div>
+                                <p className="text-sm font-medium">{slot.dayOfWeek}</p>
+                                <p className="text-xs text-slate-400">
+                                  {slot.startTime} – {slot.endTime} · {slot.durationMin} min
+                                </p>
+                              </div>
+                            </div>
+                            <button
+                              onClick={() => scheduleWorkout(slot)}
+                              disabled={isScheduling || isScheduled}
+                              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                                isScheduled
+                                  ? "bg-green-600/20 text-green-400"
+                                  : isScheduling
+                                    ? "bg-slate-700 text-slate-500"
+                                    : "bg-purple-600 text-white hover:bg-purple-700"
+                              }`}
+                            >
+                              {isScheduled ? "✓ Booked" : isScheduling ? "..." : "Book"}
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Day-by-day breakdown */}
+                <p className="text-xs text-slate-500 mb-2">Day-by-day schedule</p>
+                <div className="space-y-2">
+                  {Object.entries(daySchedules).map(([dateStr, schedule]) => {
+                    const d = new Date(dateStr + "T12:00:00");
+                    const dayName = d.toLocaleDateString("en-US", { weekday: "short" });
+                    const monthDay = d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+                    const isExpanded = expandedCalDay === dateStr;
+                    const isToday = dateStr === new Date().toISOString().split("T")[0];
+                    const meetingCount = schedule.events.filter((e) => !e.allDay).length;
+                    const freeCount = schedule.freeSlots.filter((s) => s.durationMin >= 40).length;
+
+                    return (
+                      <div key={dateStr} className="bg-[var(--card)] rounded-xl overflow-hidden">
+                        <button
+                          onClick={() => setExpandedCalDay(isExpanded ? null : dateStr)}
+                          className={`w-full flex items-center justify-between p-3 text-left ${isToday ? "bg-sky-500/5" : ""}`}
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className={`text-center w-10 ${isToday ? "text-sky-400" : ""}`}>
+                              <p className="text-[10px] text-slate-500 uppercase">{dayName}</p>
+                              <p className="text-sm font-bold">{d.getDate()}</p>
+                            </div>
+                            <div>
+                              <p className="text-xs text-slate-400">
+                                {meetingCount} meeting{meetingCount !== 1 ? "s" : ""} · {freeCount} open slot{freeCount !== 1 ? "s" : ""}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {isToday && (
+                              <span className="text-[10px] font-semibold text-sky-400 bg-sky-500/10 px-2 py-0.5 rounded-full">
+                                TODAY
+                              </span>
+                            )}
+                            <svg className={`w-4 h-4 text-slate-500 transition-transform ${isExpanded ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
+                            </svg>
+                          </div>
+                        </button>
+
+                        {isExpanded && (
+                          <div className="px-3 pb-3 border-t border-slate-700/50 pt-2 space-y-1.5">
+                            {schedule.events.filter((e) => !e.allDay).map((evt) => (
+                              <div key={evt.id} className="flex items-center gap-2 text-xs">
+                                <div className="w-1.5 h-1.5 rounded-full bg-red-400 flex-shrink-0" />
+                                <span className="text-slate-500">
+                                  {new Date(evt.start).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
+                                </span>
+                                <span className="text-slate-300 truncate">{evt.summary}</span>
+                              </div>
+                            ))}
+                            {schedule.freeSlots.filter((s) => s.durationMin >= 30).map((slot) => (
+                              <div key={slot.start} className="flex items-center justify-between gap-2 text-xs bg-emerald-500/5 rounded-lg px-2.5 py-2">
+                                <div className="flex items-center gap-2">
+                                  <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 flex-shrink-0" />
+                                  <span className="text-emerald-400">{slot.startTime} – {slot.endTime}</span>
+                                  <span className="text-slate-500">({slot.durationMin} min free)</span>
+                                </div>
+                                {slot.durationMin >= 40 && (
+                                  <button
+                                    onClick={() => scheduleWorkout(slot)}
+                                    disabled={scheduling === slot.start}
+                                    className="text-[10px] font-semibold text-purple-400 hover:text-purple-300"
+                                  >
+                                    {scheduleSuccess === slot.start ? "✓" : scheduling === slot.start ? "..." : "Book"}
+                                  </button>
+                                )}
+                              </div>
+                            ))}
+                            {schedule.freeSlots.length === 0 && (
+                              <p className="text-xs text-slate-500 text-center py-1">No open slots this day</p>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Refresh button */}
+                <button
+                  onClick={loadCalendar}
+                  className="w-full mt-3 text-xs text-slate-500 hover:text-slate-300 py-2 transition-colors"
+                >
+                  ↻ Refresh calendar
+                </button>
+              </>
+            )}
           </div>
         </div>
       )}

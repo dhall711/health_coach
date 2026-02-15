@@ -5,6 +5,7 @@ import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { db } from "@/lib/db";
+import { API_BASE } from "@/lib/api";
 import { getGreeting, getTimeOfDay, getTodayRange, getToday } from "@/lib/dates";
 import { C, base } from "@/lib/theme";
 import type { FoodLog, FoodFavorite, Workout, WaterLog, Streak } from "@/lib/types";
@@ -87,7 +88,18 @@ export default function TodayScreen() {
       setMobDone(!!(mlRes.data && mlRes.data.length > 0));
       if (pfRes.data?.goal_weight) setGoalW(pfRes.data.goal_weight);
       if (favRes.data) setFavorites(favRes.data as FoodFavorite[]);
-      if (strRes.data) setStreak(strRes.data as Streak);
+      // Streak: trigger server-side check-in to auto-update
+      try {
+        const streakRes = await fetch(`${API_BASE}/api/streaks/check-in`, { method: "POST" });
+        if (streakRes.ok) {
+          const sr = await streakRes.json();
+          setStreak({ id: "", current_streak: sr.current_streak, longest_streak: sr.longest_streak, last_check_in_date: sr.last_check_in_date, streak_freezes_remaining: 0, streak_freezes_used: 0 });
+        } else if (strRes.data) {
+          setStreak(strRes.data as Streak);
+        }
+      } catch {
+        if (strRes.data) setStreak(strRes.data as Streak);
+      }
 
       const sv = await AsyncStorage.getItem("startWeight");
       if (sv) setStartW(Number(sv));

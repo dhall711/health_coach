@@ -119,14 +119,25 @@ export default function TodayPage() {
         );
       }
 
-      // Load streak
-      const { data: streakData } = await db
-        .from("streaks")
-        .select("*")
-        .limit(1)
-        .single();
-
-      if (streakData) setStreak(streakData as Streak);
+      // Load streak and trigger check-in (updates streak based on today's activity)
+      try {
+        const streakRes = await fetch("/api/streaks/check-in", { method: "POST" });
+        if (streakRes.ok) {
+          const sr = await streakRes.json();
+          setStreak({
+            id: "",
+            current_streak: sr.current_streak,
+            longest_streak: sr.longest_streak,
+            last_check_in_date: sr.last_check_in_date,
+            streak_freezes_remaining: 0,
+            streak_freezes_used: 0,
+          });
+        }
+      } catch {
+        // Fallback: read streak directly
+        const { data: streakData } = await db.from("streaks").select("*").limit(1).single();
+        if (streakData) setStreak(streakData as Streak);
+      }
 
       // Load latest weight
       const { data: weightData } = await db
