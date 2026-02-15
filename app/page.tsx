@@ -13,9 +13,9 @@ function getToday() {
 
 function getGreeting() {
   const hour = new Date().getHours();
-  if (hour < 12) return "Good morning";
-  if (hour < 17) return "Good afternoon";
-  return "Good evening";
+  if (hour < 12) return "Good Morning, Doug";
+  if (hour < 17) return "Good Afternoon, Doug";
+  return "Good Evening, Doug";
 }
 
 function getTimeOfDay(): "morning" | "afternoon" | "evening" {
@@ -23,6 +23,26 @@ function getTimeOfDay(): "morning" | "afternoon" | "evening" {
   if (hour < 12) return "morning";
   if (hour < 17) return "afternoon";
   return "evening";
+}
+
+function getCoachMessage(
+  timeOfDay: string,
+  caloriesConsumed: number,
+  calorieTarget: number,
+  hasWorkedOut: boolean,
+  hasLoggedWeight: boolean,
+  mobilityDone: boolean,
+): string {
+  const hour = new Date().getHours();
+  if (hour < 8 && !hasLoggedWeight) return "Start your day right -- step on the scale before breakfast.";
+  if (hour < 10 && hasLoggedWeight && caloriesConsumed === 0) return "Weight logged. Time for coffee and your banana -- fuel up.";
+  if (timeOfDay === "morning" && !hasWorkedOut) return "You have a window this morning. How about 30 min on the AMT?";
+  if (timeOfDay === "afternoon" && !hasWorkedOut) return "Still time for your workout today. Even 20 minutes counts.";
+  if (timeOfDay === "afternoon" && hasWorkedOut && !mobilityDone) return "Great workout. Now do your 5-min hip and back stretches.";
+  if (caloriesConsumed > calorieTarget * 0.85) return "You're close to your calorie limit. Be mindful with your next meal.";
+  if (timeOfDay === "evening" && hasWorkedOut && mobilityDone) return "Solid day, Doug. Log dinner and let's wrap up strong.";
+  if (timeOfDay === "evening") return "How's the day going? Let's review and plan for tomorrow.";
+  return "You're building momentum. Keep it up -- consistency wins.";
 }
 
 export default function TodayPage() {
@@ -41,6 +61,7 @@ export default function TodayPage() {
   const [mobilityDone, setMobilityDone] = useState(false);
   const [favorites, setFavorites] = useState<FoodFavorite[]>([]);
   const [loading, setLoading] = useState(true);
+  const [hasMeals, setHasMeals] = useState(false);
 
   const loadDashboardData = useCallback(async () => {
     const today = getToday();
@@ -56,6 +77,7 @@ export default function TodayPage() {
 
       if (foodLogs) {
         setTodayFoodLogs(foodLogs as FoodLog[]);
+        setHasMeals(foodLogs.length > 0);
         setCaloriesConsumed(
           foodLogs.reduce((sum: number, log: FoodLog) => sum + (log.total_calories || 0), 0)
         );
@@ -180,6 +202,7 @@ export default function TodayPage() {
       setProteinG((prev) => prev + fav.default_protein_g);
       setCarbsG((prev) => prev + fav.default_carbs_g);
       setFatG((prev) => prev + fav.default_fat_g);
+      setHasMeals(true);
     }
   };
 
@@ -207,61 +230,85 @@ export default function TodayPage() {
   const carbsTarget = 180; // (1800 * 0.40) / 4
   const fatTarget = 60; // (1800 * 0.30) / 9
 
-  // Next Action logic
-  const getNextAction = () => {
-    if (timeOfDay === "morning" && !hasLoggedWeight) {
-      return {
-        icon: "⚖️",
-        title: "Log your morning weight",
-        subtitle: "Fasted, before eating -- most accurate reading",
-        href: "/track?type=weight",
-        color: "from-blue-600 to-cyan-600",
-      };
-    }
-    if (todayWorkouts.length === 0 && timeOfDay !== "evening") {
-      return {
-        icon: "🏃",
-        title: "Time for your AMT 885 session",
-        subtitle: "30-45 min moderate intensity -- you've got this",
-        href: "/track?type=workout",
-        color: "from-green-600 to-emerald-600",
-      };
-    }
-    if (!mobilityDone) {
-      return {
-        icon: "🧘",
-        title: "5-min mobility routine",
-        subtitle: "Keep those hips and back moving -- gentle stretches",
-        href: "/track?type=mobility",
-        color: "from-purple-600 to-violet-600",
-      };
-    }
-    if (timeOfDay === "evening" && caloriesConsumed > 0) {
-      return {
-        icon: "📊",
-        title: "How was today?",
-        subtitle: `${caloriesConsumed} cal logged, ${todayWorkouts.length} workout${todayWorkouts.length !== 1 ? "s" : ""}`,
-        href: "/coach",
-        color: "from-indigo-600 to-purple-600",
-      };
-    }
-    return {
-      icon: "🍽️",
-      title: "Log your next meal",
-      subtitle: `${caloriesRemaining > 0 ? caloriesRemaining : 0} cal remaining today`,
+  // Build the daily action plan -- ordered steps for the day
+  const dailyActions = [
+    {
+      id: "weight",
+      icon: "⚖️",
+      label: "Log morning weight",
+      done: hasLoggedWeight,
+      href: "/track?type=weight",
+    },
+    {
+      id: "breakfast",
+      icon: "🌅",
+      label: "Log breakfast",
+      done: todayFoodLogs.some((l) => l.meal_type === "breakfast"),
       href: "/track",
-      color: "from-sky-600 to-blue-600",
-    };
-  };
+    },
+    {
+      id: "workout",
+      icon: "🏃",
+      label: "AMT 885 workout",
+      done: todayWorkouts.length > 0,
+      href: "/track?type=workout",
+    },
+    {
+      id: "mobility",
+      icon: "🧘",
+      label: "Mobility stretches",
+      done: mobilityDone,
+      href: "/track?type=mobility",
+    },
+    {
+      id: "lunch",
+      icon: "☀️",
+      label: "Log lunch",
+      done: todayFoodLogs.some((l) => l.meal_type === "lunch"),
+      href: "/track",
+    },
+    {
+      id: "water",
+      icon: "💧",
+      label: `Drink ${waterGoal}oz water`,
+      done: waterOz >= waterGoal,
+      href: "#water",
+    },
+    {
+      id: "dinner",
+      icon: "🌙",
+      label: "Log dinner",
+      done: todayFoodLogs.some((l) => l.meal_type === "dinner"),
+      href: "/track",
+    },
+    {
+      id: "review",
+      icon: "📊",
+      label: "Daily review with coach",
+      done: false, // always available in evening
+      href: "/coach",
+    },
+  ];
 
-  const nextAction = getNextAction();
+  const completedCount = dailyActions.filter((a) => a.done).length;
+  const nextUndone = dailyActions.find((a) => !a.done);
+  const dayProgress = (completedCount / dailyActions.length) * 100;
+
+  const coachMessage = getCoachMessage(
+    timeOfDay,
+    caloriesConsumed,
+    calorieTarget,
+    todayWorkouts.length > 0,
+    hasLoggedWeight,
+    mobilityDone,
+  );
 
   return (
     <div className="max-w-lg mx-auto px-4 pt-6 safe-top page-enter">
       {/* Header */}
-      <div className="flex items-center justify-between mb-5">
+      <div className="flex items-center justify-between mb-4">
         <div>
-          <h1 className="text-xl font-bold text-white">{getGreeting()}</h1>
+          <h1 className="text-2xl font-bold text-white">{getGreeting()}</h1>
           <p className="text-sm text-slate-400">
             {new Date().toLocaleDateString("en-US", {
               weekday: "long",
@@ -273,7 +320,7 @@ export default function TodayPage() {
         <div className="flex items-center gap-3">
           {streak && streak.current_streak > 0 && (
             <div className="flex items-center gap-1 bg-amber-900/30 text-amber-300 px-2.5 py-1 rounded-full text-xs font-medium">
-              <span>🔥</span>
+              <span className="text-sm">🔥</span>
               <span>{streak.current_streak}</span>
             </div>
           )}
@@ -289,22 +336,108 @@ export default function TodayPage() {
         </div>
       </div>
 
-      {/* Next Action Card */}
+      {/* AI Coach Card -- prominent at top */}
       <Link
-        href={nextAction.href}
-        className={`block bg-gradient-to-r ${nextAction.color} rounded-2xl p-4 mb-5 card-press shadow-lg`}
+        href="/coach"
+        className="block bg-gradient-to-br from-purple-600/90 via-indigo-600/90 to-blue-600/90 border border-purple-500/20 rounded-2xl p-4 mb-5 card-press shadow-lg shadow-purple-900/20"
       >
-        <div className="flex items-center gap-3">
-          <span className="text-3xl">{nextAction.icon}</span>
-          <div className="flex-1">
-            <p className="font-semibold text-white">{nextAction.title}</p>
-            <p className="text-sm text-white/70">{nextAction.subtitle}</p>
+        <div className="flex items-start gap-3">
+          <div className="w-10 h-10 bg-white/10 rounded-xl flex items-center justify-center flex-shrink-0">
+            <svg className="w-6 h-6 text-purple-200" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09ZM18.259 8.715 18 9.75l-.259-1.035a3.375 3.375 0 0 0-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 0 0 2.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 0 0 2.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 0 0-2.455 2.456Z" />
+            </svg>
           </div>
-          <svg className="w-5 h-5 text-white/50" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
-          </svg>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center justify-between mb-1">
+              <p className="font-semibold text-white text-sm">AI Coach</p>
+              <svg className="w-4 h-4 text-white/40 flex-shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
+              </svg>
+            </div>
+            <p className="text-sm text-purple-100/80 leading-snug">
+              {coachMessage}
+            </p>
+          </div>
         </div>
       </Link>
+
+      {/* Daily Action Plan */}
+      <div className="mb-5">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">
+            Today&apos;s Plan
+          </h2>
+          <span className="text-xs text-slate-500">{completedCount}/{dailyActions.length} done</span>
+        </div>
+        {/* Progress bar */}
+        <div className="w-full bg-slate-700/50 rounded-full h-1.5 mb-3">
+          <div
+            className="bg-gradient-to-r from-emerald-500 to-cyan-400 h-1.5 rounded-full transition-all duration-500"
+            style={{ width: `${dayProgress}%` }}
+          />
+        </div>
+        {/* Action steps */}
+        <div className="bg-[var(--card)] rounded-xl overflow-hidden divide-y divide-slate-700/50">
+          {dailyActions.map((action) => {
+            const isNext = nextUndone?.id === action.id;
+            return (
+              <Link
+                key={action.id}
+                href={action.href}
+                className={`flex items-center gap-3 px-4 py-3 transition-colors ${
+                  isNext
+                    ? "bg-sky-500/10"
+                    : action.done
+                      ? "opacity-60"
+                      : "hover:bg-slate-700/30"
+                }`}
+              >
+                {/* Status indicator */}
+                <div
+                  className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 text-xs ${
+                    action.done
+                      ? "bg-emerald-500/20 text-emerald-400"
+                      : isNext
+                        ? "bg-sky-500/20 border-2 border-sky-400 text-sky-400"
+                        : "bg-slate-700/50 text-slate-500"
+                  }`}
+                >
+                  {action.done ? (
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+                    </svg>
+                  ) : isNext ? (
+                    <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M8 5v14l11-7z" />
+                    </svg>
+                  ) : (
+                    <span className="w-1.5 h-1.5 bg-slate-600 rounded-full" />
+                  )}
+                </div>
+
+                <span className="text-lg">{action.icon}</span>
+                <span
+                  className={`flex-1 text-sm ${
+                    action.done
+                      ? "text-slate-500 line-through"
+                      : isNext
+                        ? "text-white font-medium"
+                        : "text-slate-300"
+                  }`}
+                >
+                  {action.label}
+                </span>
+
+                {isNext && (
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-sky-400 bg-sky-500/10 px-2 py-0.5 rounded-full">
+                    Next
+                  </span>
+                )}
+              </Link>
+            );
+          })}
+        </div>
+      </div>
 
       {/* Calorie Budget + Macros */}
       <CalorieBudgetBar consumed={caloriesConsumed} target={calorieTarget} burned={totalCaloriesBurned} />
@@ -337,6 +470,28 @@ export default function TodayPage() {
 
       {/* Water Tracker */}
       <WaterTracker currentOz={waterOz} goalOz={waterGoal} onAddWater={addWater} />
+
+      {/* Quick Log Strip -- always visible favorites */}
+      {favorites.length > 0 && (
+        <div className="mb-5">
+          <h2 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-3">
+            Quick Log
+          </h2>
+          <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
+            {favorites.map((fav) => (
+              <button
+                key={fav.id}
+                onClick={() => quickLogFavorite(fav)}
+                className="flex-shrink-0 bg-[var(--card)] border border-slate-700 rounded-xl px-3 py-2.5 flex flex-col items-center gap-1 card-press hover:border-slate-500 transition-colors min-w-[72px]"
+              >
+                <span className="text-xl">{fav.icon}</span>
+                <span className="text-[10px] text-slate-400 whitespace-nowrap">{fav.name}</span>
+                <span className="text-[10px] text-slate-600">{fav.default_calories} cal</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Today's Timeline */}
       {todayFoodLogs.length > 0 && (
@@ -376,7 +531,7 @@ export default function TodayPage() {
       )}
 
       {/* Goal Progress */}
-      <div className="mb-5">
+      <div className="mb-6">
         <h2 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-3">
           Goal Progress
         </h2>
@@ -403,46 +558,6 @@ export default function TodayPage() {
           )}
         </div>
       </div>
-
-      {/* Quick Log Strip -- always visible favorites */}
-      {favorites.length > 0 && (
-        <div className="mb-5">
-          <h2 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-3">
-            Quick Log
-          </h2>
-          <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
-            {favorites.map((fav) => (
-              <button
-                key={fav.id}
-                onClick={() => quickLogFavorite(fav)}
-                className="flex-shrink-0 bg-[var(--card)] border border-slate-700 rounded-xl px-3 py-2.5 flex flex-col items-center gap-1 card-press hover:border-slate-500 transition-colors min-w-[72px]"
-              >
-                <span className="text-xl">{fav.icon}</span>
-                <span className="text-[10px] text-slate-400 whitespace-nowrap">{fav.name}</span>
-                <span className="text-[10px] text-slate-600">{fav.default_calories} cal</span>
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Coach CTA */}
-      <Link
-        href="/coach"
-        className="block bg-gradient-to-r from-purple-600/80 to-indigo-600/80 border border-purple-500/20 rounded-xl p-4 mb-6 card-press"
-      >
-        <div className="flex items-center gap-3">
-          <svg className="w-8 h-8 text-purple-300" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09ZM18.259 8.715 18 9.75l-.259-1.035a3.375 3.375 0 0 0-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 0 0 2.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 0 0 2.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 0 0-2.455 2.456Z" />
-          </svg>
-          <div>
-            <p className="font-semibold text-white">AI Coach</p>
-            <p className="text-sm text-purple-200/70">
-              Get advice, review your week, or adjust your plan
-            </p>
-          </div>
-        </div>
-      </Link>
     </div>
   );
 }
