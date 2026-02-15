@@ -17,6 +17,9 @@ export default function TrackPage() {
   const [selectedMealType, setSelectedMealType] = useState<MealType>("lunch");
   const [recentEntries, setRecentEntries] = useState<FoodLog[]>([]);
   const [saveSuccess, setSaveSuccess] = useState<string | null>(null);
+  const [correctionText, setCorrectionText] = useState("");
+  const [showCorrection, setShowCorrection] = useState(false);
+  const [editingResult, setEditingResult] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Workout form
@@ -135,6 +138,36 @@ export default function TrackPage() {
     } finally {
       setAnalyzing(false);
     }
+  };
+
+  // --- Re-analyze with manual correction ---
+  const analyzeCorrection = async () => {
+    if (!correctionText.trim()) return;
+    setAnalyzing(true);
+    try {
+      const res = await fetch("/api/food/analyze-text", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: correctionText }),
+      });
+      if (res.ok) {
+        setAnalysisResult(await res.json());
+        setShowCorrection(false);
+        setCorrectionText("");
+      } else {
+        alert("Failed to analyze. Please try again.");
+      }
+    } catch {
+      alert("Error analyzing food description.");
+    } finally {
+      setAnalyzing(false);
+    }
+  };
+
+  // --- Update analysis result field ---
+  const updateResultField = (field: "total_calories" | "total_protein_g" | "total_carbs_g" | "total_fat_g", value: string) => {
+    if (!analysisResult) return;
+    setAnalysisResult({ ...analysisResult, [field]: parseInt(value) || 0 });
   };
 
   // --- Save food ---
@@ -292,26 +325,83 @@ export default function TrackPage() {
           {/* Analysis Result */}
           {analysisResult && (
             <div className="bg-emerald-900/30 border border-emerald-700/40 rounded-xl p-4 mb-4">
-              <h3 className="font-semibold mb-2 text-emerald-300 text-sm">AI Analysis</h3>
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="font-semibold text-emerald-300 text-sm">AI Analysis</h3>
+                <button
+                  onClick={() => setEditingResult(!editingResult)}
+                  className="text-[10px] text-slate-400 hover:text-white transition-colors px-2 py-0.5 rounded-full bg-slate-700/50"
+                >
+                  {editingResult ? "Done editing" : "Edit values"}
+                </button>
+              </div>
+
               {analysisResult.items.map((item, i) => (
                 <div key={i} className="flex justify-between py-1 border-b border-slate-700/50 last:border-0">
                   <span className="text-sm">{item.name}</span>
                   <span className="text-sm font-semibold">{item.calories} cal</span>
                 </div>
               ))}
-              <div className="mt-2 pt-2 border-t border-emerald-700/40 flex justify-between font-semibold text-sm">
-                <span>Total</span>
-                <span>{analysisResult.total_calories} cal</span>
-              </div>
-              <p className="text-xs text-slate-400 mt-1">
-                P: {analysisResult.total_protein_g}g · C: {analysisResult.total_carbs_g}g · F: {analysisResult.total_fat_g}g
-              </p>
+
+              {/* Totals -- editable or read-only */}
+              {editingResult ? (
+                <div className="mt-2 pt-2 border-t border-emerald-700/40 grid grid-cols-4 gap-2">
+                  <div>
+                    <label className="text-[10px] text-slate-500 block mb-0.5">Calories</label>
+                    <input
+                      type="number"
+                      value={analysisResult.total_calories}
+                      onChange={(e) => updateResultField("total_calories", e.target.value)}
+                      className="w-full bg-slate-700 rounded px-2 py-1.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-sky-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-slate-500 block mb-0.5">Protein</label>
+                    <input
+                      type="number"
+                      value={analysisResult.total_protein_g}
+                      onChange={(e) => updateResultField("total_protein_g", e.target.value)}
+                      className="w-full bg-slate-700 rounded px-2 py-1.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-sky-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-slate-500 block mb-0.5">Carbs</label>
+                    <input
+                      type="number"
+                      value={analysisResult.total_carbs_g}
+                      onChange={(e) => updateResultField("total_carbs_g", e.target.value)}
+                      className="w-full bg-slate-700 rounded px-2 py-1.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-sky-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-slate-500 block mb-0.5">Fat</label>
+                    <input
+                      type="number"
+                      value={analysisResult.total_fat_g}
+                      onChange={(e) => updateResultField("total_fat_g", e.target.value)}
+                      className="w-full bg-slate-700 rounded px-2 py-1.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-sky-500"
+                    />
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div className="mt-2 pt-2 border-t border-emerald-700/40 flex justify-between font-semibold text-sm">
+                    <span>Total</span>
+                    <span>{analysisResult.total_calories} cal</span>
+                  </div>
+                  <p className="text-xs text-slate-400 mt-1">
+                    P: {analysisResult.total_protein_g}g · C: {analysisResult.total_carbs_g}g · F: {analysisResult.total_fat_g}g
+                  </p>
+                </>
+              )}
+
               {analysisResult.portion_assessment && (
                 <p className="text-xs text-amber-300 mt-2">📏 {analysisResult.portion_assessment}</p>
               )}
               {analysisResult.suggestion && (
                 <p className="text-xs text-sky-300 mt-1">💡 {analysisResult.suggestion}</p>
               )}
+
+              {/* Meal type selector */}
               <div className="flex gap-1.5 mt-3 flex-wrap">
                 {(["breakfast", "lunch", "dinner", "snack", "drink"] as MealType[]).map((mt) => (
                   <button key={mt} onClick={() => setSelectedMealType(mt)} className={`text-xs px-2.5 py-1 rounded-full ${selectedMealType === mt ? "bg-sky-600 text-white" : "bg-slate-700 text-slate-300"}`}>
@@ -319,6 +409,8 @@ export default function TrackPage() {
                   </button>
                 ))}
               </div>
+
+              {/* Action buttons */}
               <div className="flex gap-2 mt-3">
                 <button onClick={() => saveFoodLog(foodMode === "voice" ? "voice" : "camera")} className="flex-1 bg-green-600 text-white py-2.5 rounded-xl text-sm font-semibold active:opacity-80">
                   Confirm & Save
@@ -326,6 +418,54 @@ export default function TrackPage() {
                 <button onClick={() => setAnalysisResult(null)} className="bg-slate-700 text-slate-300 px-4 py-2.5 rounded-xl text-sm">
                   Discard
                 </button>
+              </div>
+
+              {/* Not accurate? Describe manually */}
+              <div className="mt-3 pt-3 border-t border-emerald-700/30">
+                {!showCorrection ? (
+                  <button
+                    onClick={() => setShowCorrection(true)}
+                    className="w-full text-xs text-slate-400 hover:text-slate-200 transition-colors py-1.5 flex items-center justify-center gap-1.5"
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10" />
+                    </svg>
+                    Not accurate? Describe what you actually ate
+                  </button>
+                ) : (
+                  <div>
+                    <p className="text-xs text-slate-400 mb-2">Describe the food and portions for a new analysis:</p>
+                    <textarea
+                      value={correctionText}
+                      onChange={(e) => setCorrectionText(e.target.value)}
+                      placeholder="e.g. A large bowl of pasta with meat sauce, about 2 cups, with garlic bread on the side"
+                      rows={3}
+                      className="w-full bg-slate-700 rounded-lg px-3 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-sky-500 mb-2"
+                    />
+                    <div className="flex gap-2">
+                      <button
+                        onClick={analyzeCorrection}
+                        disabled={!correctionText.trim() || analyzing}
+                        className="flex-1 bg-sky-600 text-white py-2 rounded-lg text-sm font-semibold active:opacity-80 disabled:opacity-40 flex items-center justify-center gap-2"
+                      >
+                        {analyzing ? (
+                          <>
+                            <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                            Re-analyzing...
+                          </>
+                        ) : (
+                          "Re-analyze"
+                        )}
+                      </button>
+                      <button
+                        onClick={() => { setShowCorrection(false); setCorrectionText(""); }}
+                        className="bg-slate-700 text-slate-400 px-3 py-2 rounded-lg text-sm"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           )}
