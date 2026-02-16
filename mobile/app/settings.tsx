@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback } from "react";
-import { View, Text, ScrollView, TextInput, Pressable, Alert, StyleSheet, ActivityIndicator, Platform } from "react-native";
+import { View, Text, ScrollView, TextInput, Pressable, Alert, StyleSheet, ActivityIndicator, Platform, Linking } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { API_BASE } from "@/lib/api";
 import { C, base } from "@/lib/theme";
 import {
   isHealthKitAvailable,
@@ -437,36 +438,87 @@ export default function SettingsScreen() {
         {/* Other Integrations */}
         <Text style={[base.label, { marginBottom: 8 }]}>Other Integrations</Text>
         <View style={base.card}>
-          {[
-            { name: "Withings Scale", status: "Connected", icon: "scale" as const, color: C.green },
-            { name: "Google Calendar", status: "Connected", icon: "calendar" as const, color: C.blue },
-          ].map((ig, i) => (
-            <View key={ig.name}>
-              {i > 0 && <View style={S.divider} />}
-              <View style={S.field}>
-                <View style={[base.row, { gap: 8 }]}>
-                  <Ionicons name={ig.icon} size={20} color={ig.color} />
-                  <Text style={base.body}>{ig.name}</Text>
-                </View>
-                <View
-                  style={[
-                    S.statusBadge,
-                    { backgroundColor: ig.status === "Connected" ? C.greenBg : C.cardAlt },
-                  ]}
-                >
-                  <Text
-                    style={{
-                      color: ig.status === "Connected" ? C.emerald : C.textDim,
-                      fontSize: 11,
-                      fontWeight: "500",
-                    }}
-                  >
-                    {ig.status}
-                  </Text>
-                </View>
+          {/* Withings Scale */}
+          <Pressable
+            style={S.field}
+            onPress={() => {
+              Alert.alert("Withings Scale", "Connected and syncing weight data automatically.", [
+                { text: "OK", style: "cancel" },
+                {
+                  text: "Disconnect",
+                  style: "destructive",
+                  onPress: async () => {
+                    try {
+                      await fetch(`${API_BASE}/api/integrations/withings/disconnect`, { method: "POST" });
+                      Alert.alert("Disconnected", "Withings has been disconnected. Reconnect via the web app.");
+                    } catch {
+                      Alert.alert("Error", "Could not disconnect. Try again later.");
+                    }
+                  },
+                },
+                {
+                  text: "Manage on Web",
+                  onPress: () => Linking.openURL("https://health-coach-doug.vercel.app/settings"),
+                },
+              ]);
+            }}
+          >
+            <View style={[base.row, { gap: 8 }]}>
+              <Ionicons name="scale" size={20} color={C.green} />
+              <View>
+                <Text style={base.body}>Withings Scale</Text>
+                <Text style={{ fontSize: 10, color: C.textDim }}>Tap to manage</Text>
               </View>
             </View>
-          ))}
+            <View style={[base.row, { gap: 6 }]}>
+              <View style={[S.statusBadge, { backgroundColor: C.greenBg }]}>
+                <Text style={{ color: C.emerald, fontSize: 11, fontWeight: "500" }}>Connected</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={14} color={C.textDim} />
+            </View>
+          </Pressable>
+
+          <View style={S.divider} />
+
+          {/* Google Calendar */}
+          <Pressable
+            style={S.field}
+            onPress={() => {
+              Alert.alert("Google Calendar", "Connected for smart workout scheduling.", [
+                { text: "OK", style: "cancel" },
+                {
+                  text: "Disconnect",
+                  style: "destructive",
+                  onPress: async () => {
+                    try {
+                      await fetch(`${API_BASE}/api/integrations/google/disconnect`, { method: "POST" });
+                      Alert.alert("Disconnected", "Google Calendar has been disconnected. Reconnect via the web app.");
+                    } catch {
+                      Alert.alert("Error", "Could not disconnect. Try again later.");
+                    }
+                  },
+                },
+                {
+                  text: "Manage on Web",
+                  onPress: () => Linking.openURL("https://health-coach-doug.vercel.app/settings"),
+                },
+              ]);
+            }}
+          >
+            <View style={[base.row, { gap: 8 }]}>
+              <Ionicons name="calendar" size={20} color={C.blue} />
+              <View>
+                <Text style={base.body}>Google Calendar</Text>
+                <Text style={{ fontSize: 10, color: C.textDim }}>Tap to manage</Text>
+              </View>
+            </View>
+            <View style={[base.row, { gap: 6 }]}>
+              <View style={[S.statusBadge, { backgroundColor: C.greenBg }]}>
+                <Text style={{ color: C.emerald, fontSize: 11, fontWeight: "500" }}>Connected</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={14} color={C.textDim} />
+            </View>
+          </Pressable>
         </View>
 
         {/* ===== NOTIFICATIONS ===== */}
