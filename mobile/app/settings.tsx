@@ -46,6 +46,10 @@ export default function SettingsScreen() {
     workouts: number;
   } | null>(null);
 
+  // Integration status
+  const [withingsConnected, setWithingsConnected] = useState<boolean | null>(null);
+  const [googleConnected, setGoogleConnected] = useState<boolean | null>(null);
+
   // Notification state
   const [notifPrefs, setNotifPrefs] = useState<NotificationPrefs>(DEFAULT_PREFS);
 
@@ -68,6 +72,19 @@ export default function SettingsScreen() {
         setHkConnected(connected);
         const ls = await getLastSyncTime();
         setLastSync(ls);
+      }
+
+      // Integration statuses
+      try {
+        const statusRes = await fetch(`${API_BASE}/api/integrations/status`);
+        if (statusRes.ok) {
+          const statuses = await statusRes.json();
+          setWithingsConnected(statuses?.withings?.connected ?? false);
+          setGoogleConnected(statuses?.google?.connected ?? false);
+        }
+      } catch {
+        setWithingsConnected(false);
+        setGoogleConnected(false);
       }
 
       // Notification prefs
@@ -442,37 +459,49 @@ export default function SettingsScreen() {
           <Pressable
             style={S.field}
             onPress={() => {
-              Alert.alert("Withings Scale", "Connected and syncing weight data automatically.", [
-                { text: "OK", style: "cancel" },
-                {
-                  text: "Disconnect",
-                  style: "destructive",
-                  onPress: async () => {
-                    try {
-                      await fetch(`${API_BASE}/api/integrations/withings/disconnect`, { method: "POST" });
-                      Alert.alert("Disconnected", "Withings has been disconnected. Reconnect via the web app.");
-                    } catch {
-                      Alert.alert("Error", "Could not disconnect. Try again later.");
-                    }
+              if (withingsConnected) {
+                Alert.alert("Withings Scale", "Connected and syncing weight data automatically.", [
+                  { text: "OK", style: "cancel" },
+                  {
+                    text: "Disconnect",
+                    style: "destructive",
+                    onPress: async () => {
+                      try {
+                        const res = await fetch(`${API_BASE}/api/integrations/withings/disconnect`, { method: "POST" });
+                        if (res.ok) {
+                          setWithingsConnected(false);
+                          Alert.alert("Disconnected", "Withings has been disconnected.");
+                        } else {
+                          Alert.alert("Error", "Could not disconnect. Try again later.");
+                        }
+                      } catch {
+                        Alert.alert("Error", "Could not disconnect. Try again later.");
+                      }
+                    },
                   },
-                },
-                {
-                  text: "Manage on Web",
-                  onPress: () => Linking.openURL("https://health-coach-doug.vercel.app/settings"),
-                },
-              ]);
+                ]);
+              } else {
+                Alert.alert("Withings Scale", "Not connected. Connect via the web app to enable weight syncing.", [
+                  { text: "Cancel", style: "cancel" },
+                  { text: "Open Web App", onPress: () => Linking.openURL("https://health-coach-doug.vercel.app/settings") },
+                ]);
+              }
             }}
           >
             <View style={[base.row, { gap: 8 }]}>
-              <Ionicons name="scale" size={20} color={C.green} />
+              <Ionicons name="scale" size={20} color={withingsConnected ? C.green : C.textDim} />
               <View>
                 <Text style={base.body}>Withings Scale</Text>
-                <Text style={{ fontSize: 10, color: C.textDim }}>Tap to manage</Text>
+                <Text style={{ fontSize: 10, color: C.textDim }}>
+                  {withingsConnected === null ? "Checking..." : "Tap to manage"}
+                </Text>
               </View>
             </View>
             <View style={[base.row, { gap: 6 }]}>
-              <View style={[S.statusBadge, { backgroundColor: C.greenBg }]}>
-                <Text style={{ color: C.emerald, fontSize: 11, fontWeight: "500" }}>Connected</Text>
+              <View style={[S.statusBadge, { backgroundColor: withingsConnected ? C.greenBg : C.cardAlt }]}>
+                <Text style={{ color: withingsConnected ? C.emerald : C.textDim, fontSize: 11, fontWeight: "500" }}>
+                  {withingsConnected === null ? "..." : withingsConnected ? "Connected" : "Not Connected"}
+                </Text>
               </View>
               <Ionicons name="chevron-forward" size={14} color={C.textDim} />
             </View>
@@ -484,37 +513,49 @@ export default function SettingsScreen() {
           <Pressable
             style={S.field}
             onPress={() => {
-              Alert.alert("Google Calendar", "Connected for smart workout scheduling.", [
-                { text: "OK", style: "cancel" },
-                {
-                  text: "Disconnect",
-                  style: "destructive",
-                  onPress: async () => {
-                    try {
-                      await fetch(`${API_BASE}/api/integrations/google/disconnect`, { method: "POST" });
-                      Alert.alert("Disconnected", "Google Calendar has been disconnected. Reconnect via the web app.");
-                    } catch {
-                      Alert.alert("Error", "Could not disconnect. Try again later.");
-                    }
+              if (googleConnected) {
+                Alert.alert("Google Calendar", "Connected for smart workout scheduling.", [
+                  { text: "OK", style: "cancel" },
+                  {
+                    text: "Disconnect",
+                    style: "destructive",
+                    onPress: async () => {
+                      try {
+                        const res = await fetch(`${API_BASE}/api/integrations/google/disconnect`, { method: "POST" });
+                        if (res.ok) {
+                          setGoogleConnected(false);
+                          Alert.alert("Disconnected", "Google Calendar has been disconnected.");
+                        } else {
+                          Alert.alert("Error", "Could not disconnect. Try again later.");
+                        }
+                      } catch {
+                        Alert.alert("Error", "Could not disconnect. Try again later.");
+                      }
+                    },
                   },
-                },
-                {
-                  text: "Manage on Web",
-                  onPress: () => Linking.openURL("https://health-coach-doug.vercel.app/settings"),
-                },
-              ]);
+                ]);
+              } else {
+                Alert.alert("Google Calendar", "Not connected. Connect via the web app to enable smart scheduling.", [
+                  { text: "Cancel", style: "cancel" },
+                  { text: "Open Web App", onPress: () => Linking.openURL("https://health-coach-doug.vercel.app/settings") },
+                ]);
+              }
             }}
           >
             <View style={[base.row, { gap: 8 }]}>
-              <Ionicons name="calendar" size={20} color={C.blue} />
+              <Ionicons name="calendar" size={20} color={googleConnected ? C.blue : C.textDim} />
               <View>
                 <Text style={base.body}>Google Calendar</Text>
-                <Text style={{ fontSize: 10, color: C.textDim }}>Tap to manage</Text>
+                <Text style={{ fontSize: 10, color: C.textDim }}>
+                  {googleConnected === null ? "Checking..." : "Tap to manage"}
+                </Text>
               </View>
             </View>
             <View style={[base.row, { gap: 6 }]}>
-              <View style={[S.statusBadge, { backgroundColor: C.greenBg }]}>
-                <Text style={{ color: C.emerald, fontSize: 11, fontWeight: "500" }}>Connected</Text>
+              <View style={[S.statusBadge, { backgroundColor: googleConnected ? C.greenBg : C.cardAlt }]}>
+                <Text style={{ color: googleConnected ? C.emerald : C.textDim, fontSize: 11, fontWeight: "500" }}>
+                  {googleConnected === null ? "..." : googleConnected ? "Connected" : "Not Connected"}
+                </Text>
               </View>
               <Ionicons name="chevron-forward" size={14} color={C.textDim} />
             </View>
