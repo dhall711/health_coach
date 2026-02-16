@@ -186,11 +186,11 @@ export default function TodayScreen() {
 
         {/* Greeting + Streak */}
         <View style={[base.rowBetween, { marginTop: 8 }]}>
-          <View>
-            <Text style={base.h1}>{getGreeting()}</Text>
+          <View style={{ flex: 1, marginRight: 8 }}>
+            <Text style={base.h1} numberOfLines={1}>{getGreeting()}</Text>
             <Text style={base.caption}>{new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}</Text>
           </View>
-          <View style={[base.row, { gap: 8 }]}>
+          <View style={[base.row, { gap: 8, flexShrink: 0 }]}>
             {streak && streak.current_streak > 0 && (
               <View style={S.streakBadge}>
                 <Text style={{ fontSize: 12 }}>🔥</Text>
