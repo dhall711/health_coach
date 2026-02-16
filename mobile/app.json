@@ -18,7 +18,8 @@
       "bundleIdentifier": "com.dhall.healthcoach",
       "infoPlist": {
         "NSCameraUsageDescription": "Health Coach uses the camera to analyze your meals.",
-        "NSPhotoLibraryUsageDescription": "Health Coach accesses your photos to analyze food images."
+        "NSPhotoLibraryUsageDescription": "Health Coach accesses your photos to analyze food images.",
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
@@ -27,7 +28,10 @@
         "backgroundColor": "#0f172a"
       },
       "edgeToEdgeEnabled": true,
-      "package": "com.dhall.healthcoach"
+      "package": "com.dhall.healthcoach",
+      "permissions": [
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "web": {
       "bundler": "metro",
@@ -38,17 +42,23 @@
       "expo-router",
       "expo-secure-store",
       "expo-image-picker",
-      ["expo-notifications", {
-        "sounds": []
-      }],
-      ["@kingstinct/react-native-healthkit", {
-        "NSHealthShareUsageDescription": "Health Coach Doug reads your health data (weight, steps, workouts, heart rate) to provide personalized coaching and track your progress.",
-        "NSHealthUpdateUsageDescription": "Health Coach Doug can save workout data back to Apple Health to keep all your health records in sync.",
-        "background": true
-      }]
+      [
+        "@kingstinct/react-native-healthkit",
+        {
+          "NSHealthShareUsageDescription": "Health Coach Doug reads your health data (weight, steps, workouts, heart rate) to provide personalized coaching and track your progress.",
+          "NSHealthUpdateUsageDescription": "Health Coach Doug can save workout data back to Apple Health to keep all your health records in sync.",
+          "background": true
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "f054501a-2e66-4679-bff7-7eb2160c163f"
+      }
     }
   }
 }
