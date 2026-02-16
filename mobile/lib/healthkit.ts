@@ -127,7 +127,10 @@ export async function getTodaySteps(): Promise<number> {
     const result = await HK.queryStatisticsForQuantity(
       "HKQuantityTypeIdentifierStepCount",
       ["cumulativeSum"],
-      { from: start, to: now }
+      {
+        filter: { date: { startDate: start, endDate: now } },
+        unit: "count",
+      }
     );
     return Math.round(result?.sumQuantity?.quantity ?? 0);
   } catch (e) {
@@ -148,7 +151,10 @@ export async function getTodayActiveCalories(): Promise<number> {
     const result = await HK.queryStatisticsForQuantity(
       "HKQuantityTypeIdentifierActiveEnergyBurned",
       ["cumulativeSum"],
-      { from: start, to: now }
+      {
+        filter: { date: { startDate: start, endDate: now } },
+        unit: "kcal",
+      }
     );
     return Math.round(result?.sumQuantity?.quantity ?? 0);
   } catch (e) {
@@ -164,11 +170,11 @@ export async function getLatestWeight(): Promise<number | null> {
 
   try {
     const result = await HK.getMostRecentQuantitySample(
-      "HKQuantityTypeIdentifierBodyMass"
+      "HKQuantityTypeIdentifierBodyMass",
+      "lb"
     );
     if (result?.quantity) {
-      // HealthKit stores BodyMass in kg — convert to lbs
-      return Math.round(result.quantity * 2.20462 * 10) / 10;
+      return Math.round(result.quantity * 10) / 10;
     }
     return null;
   } catch (e) {
