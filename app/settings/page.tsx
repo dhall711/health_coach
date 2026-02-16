@@ -4,6 +4,15 @@ import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { db } from "@/lib/db";
 import type { Profile } from "@/lib/types";
+import {
+  type NotificationPrefs,
+  getNotificationPrefs,
+  saveNotificationPrefs,
+  requestNotificationPermission,
+  canNotify,
+  scheduleAllNotifications,
+  clearAllScheduledNotifications,
+} from "@/lib/notifications";
 
 interface IntegrationStatus {
   connected: boolean;
@@ -33,6 +42,40 @@ export default function SettingsPage() {
 
   // Apple Health webhook secret display
   const [showWebhookUrl, setShowWebhookUrl] = useState(false);
+
+  // Notification preferences
+  const [notifPrefs, setNotifPrefs] = useState<NotificationPrefs>(getNotificationPrefs());
+  const [notifSupported, setNotifSupported] = useState(false);
+
+  useEffect(() => {
+    setNotifSupported(typeof window !== "undefined" && "Notification" in window);
+  }, []);
+
+  const toggleNotifications = async () => {
+    if (!notifPrefs.enabled) {
+      const granted = await requestNotificationPermission();
+      if (granted) {
+        const newPrefs = { ...notifPrefs, enabled: true };
+        setNotifPrefs(newPrefs);
+        saveNotificationPrefs(newPrefs);
+        scheduleAllNotifications();
+      } else {
+        setFlashMessage({ type: "error", text: "Notification permission denied. Enable in browser settings." });
+      }
+    } else {
+      const newPrefs = { ...notifPrefs, enabled: false };
+      setNotifPrefs(newPrefs);
+      saveNotificationPrefs(newPrefs);
+      clearAllScheduledNotifications();
+    }
+  };
+
+  const updateNotifPref = (key: keyof NotificationPrefs, value: boolean | string) => {
+    const newPrefs = { ...notifPrefs, [key]: value };
+    setNotifPrefs(newPrefs);
+    saveNotificationPrefs(newPrefs);
+    if (newPrefs.enabled) scheduleAllNotifications();
+  };
 
   // URL params for OAuth callbacks
   const [flashMessage, setFlashMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
@@ -457,6 +500,134 @@ export default function SettingsPage() {
           
         </div>
       </div>
+
+      {/* ============ NOTIFICATIONS ============ */}
+      {notifSupported && (
+        <div className="mb-6">
+          <h2 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-3">
+            Reminders
+          </h2>
+          <div className="bg-[var(--card)] border border-slate-700 rounded-xl p-4 space-y-4">
+            {/* Master toggle */}
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium">Push Notifications</p>
+                <p className="text-xs text-slate-400">Get reminders to stay on track</p>
+              </div>
+              <button
+                onClick={toggleNotifications}
+                className={`w-12 h-6 rounded-full transition-colors relative ${notifPrefs.enabled ? "bg-sky-600" : "bg-slate-600"}`}
+              >
+                <div className={`w-5 h-5 bg-white rounded-full absolute top-0.5 transition-transform ${notifPrefs.enabled ? "translate-x-6" : "translate-x-0.5"}`} />
+              </button>
+            </div>
+
+            {notifPrefs.enabled && (
+              <>
+                <div className="border-t border-slate-700/50 pt-3 space-y-3">
+                  {/* Morning weight */}
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="text-base">⚖️</span>
+                      <div>
+                        <p className="text-sm">Morning Weigh-in</p>
+                        <p className="text-xs text-slate-500">Step on the scale reminder</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="time"
+                        value={notifPrefs.morningWeightTime}
+                        onChange={(e) => updateNotifPref("morningWeightTime", e.target.value)}
+                        className="bg-slate-700 rounded px-2 py-1 text-xs text-white w-20"
+                      />
+                      <button
+                        onClick={() => updateNotifPref("morningWeight", !notifPrefs.morningWeight)}
+                        className={`w-9 h-5 rounded-full transition-colors relative ${notifPrefs.morningWeight ? "bg-sky-600" : "bg-slate-600"}`}
+                      >
+                        <div className={`w-4 h-4 bg-white rounded-full absolute top-0.5 transition-transform ${notifPrefs.morningWeight ? "translate-x-4.5" : "translate-x-0.5"}`} />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Workout */}
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="text-base">🏃</span>
+                      <div>
+                        <p className="text-sm">Workout Reminder</p>
+                        <p className="text-xs text-slate-500">Time for AMT 885 session</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="time"
+                        value={notifPrefs.workoutReminderTime}
+                        onChange={(e) => updateNotifPref("workoutReminderTime", e.target.value)}
+                        className="bg-slate-700 rounded px-2 py-1 text-xs text-white w-20"
+                      />
+                      <button
+                        onClick={() => updateNotifPref("workoutReminder", !notifPrefs.workoutReminder)}
+                        className={`w-9 h-5 rounded-full transition-colors relative ${notifPrefs.workoutReminder ? "bg-sky-600" : "bg-slate-600"}`}
+                      >
+                        <div className={`w-4 h-4 bg-white rounded-full absolute top-0.5 transition-transform ${notifPrefs.workoutReminder ? "translate-x-4.5" : "translate-x-0.5"}`} />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Evening review */}
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="text-base">📊</span>
+                      <div>
+                        <p className="text-sm">Evening Review</p>
+                        <p className="text-xs text-slate-500">Review and plan for tomorrow</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="time"
+                        value={notifPrefs.eveningReviewTime}
+                        onChange={(e) => updateNotifPref("eveningReviewTime", e.target.value)}
+                        className="bg-slate-700 rounded px-2 py-1 text-xs text-white w-20"
+                      />
+                      <button
+                        onClick={() => updateNotifPref("eveningReview", !notifPrefs.eveningReview)}
+                        className={`w-9 h-5 rounded-full transition-colors relative ${notifPrefs.eveningReview ? "bg-sky-600" : "bg-slate-600"}`}
+                      >
+                        <div className={`w-4 h-4 bg-white rounded-full absolute top-0.5 transition-transform ${notifPrefs.eveningReview ? "translate-x-4.5" : "translate-x-0.5"}`} />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Water */}
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="text-base">💧</span>
+                      <div>
+                        <p className="text-sm">Water Reminders</p>
+                        <p className="text-xs text-slate-500">Every 2 hours, 9am-6pm</p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => updateNotifPref("waterReminder", !notifPrefs.waterReminder)}
+                      className={`w-9 h-5 rounded-full transition-colors relative ${notifPrefs.waterReminder ? "bg-sky-600" : "bg-slate-600"}`}
+                    >
+                      <div className={`w-4 h-4 bg-white rounded-full absolute top-0.5 transition-transform ${notifPrefs.waterReminder ? "translate-x-4.5" : "translate-x-0.5"}`} />
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
+
+            {!notifPrefs.enabled && (
+              <p className="text-xs text-slate-500">
+                Enable to get daily reminders for weigh-ins, workouts, and evening reviews.
+              </p>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* ============ GOAL SETTINGS ============ */}
       <div className="mb-6">

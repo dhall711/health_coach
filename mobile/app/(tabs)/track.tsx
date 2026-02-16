@@ -384,32 +384,24 @@ export default function TrackScreen() {
             )}
             <Pressable
               style={S.mobilityCard}
-              onPress={() => logMobility("quick_5min")}
+              onPress={() => router.push("/mobility")}
             >
               <View style={[base.row, { gap: 12 }]}>
                 <Text style={{ fontSize: 28 }}>⚡</Text>
                 <View style={base.flex1}>
-                  <Text style={{ fontSize: 15, fontWeight: "600", color: C.text }}>Quick Mobility</Text>
-                  <Text style={{ fontSize: 12, color: C.textSec }}>5 minutes · 5 exercises</Text>
-                  <Text style={{ fontSize: 11, color: C.textDim, marginTop: 2 }}>Perfect for between meetings</Text>
+                  <Text style={{ fontSize: 15, fontWeight: "600", color: C.text }}>Start Guided Routine</Text>
+                  <Text style={{ fontSize: 12, color: C.textSec }}>Step-by-step timer with instructions</Text>
+                  <Text style={{ fontSize: 11, color: C.textDim, marginTop: 2 }}>Choose Quick (5 min) or Full (10 min)</Text>
                 </View>
                 <Ionicons name="chevron-forward" size={18} color={C.textDim} />
               </View>
             </Pressable>
-            <Pressable
-              style={S.mobilityCard}
-              onPress={() => logMobility("full_10min")}
-            >
-              <View style={[base.row, { gap: 12 }]}>
-                <Text style={{ fontSize: 28 }}>🧘</Text>
-                <View style={base.flex1}>
-                  <Text style={{ fontSize: 15, fontWeight: "600", color: C.text }}>Full Mobility Routine</Text>
-                  <Text style={{ fontSize: 12, color: C.textSec }}>10 minutes · 10 exercises</Text>
-                  <Text style={{ fontSize: 11, color: C.textDim, marginTop: 2 }}>Comprehensive hip, spine, and hamstring work</Text>
-                </View>
-                <Ionicons name="chevron-forward" size={18} color={C.textDim} />
-              </View>
-            </Pressable>
+            <View style={[base.card, { marginTop: 12 }]}>
+              <Text style={{ fontSize: 13, fontWeight: "500", color: C.textSec, marginBottom: 4 }}>About these routines</Text>
+              <Text style={{ fontSize: 12, color: C.textDim, lineHeight: 18 }}>
+                All exercises are designed for Forestier&apos;s disease (DISH) and osteoarthritis. Seated options available. Focus on gentle spinal mobility, hip flexibility, and hamstring range.
+              </Text>
+            </View>
           </View>
         )}
 

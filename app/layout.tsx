@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import BottomNav from "@/components/BottomNav";
+import NotificationScheduler from "@/components/NotificationScheduler";
 
 export const metadata: Metadata = {
   title: "Health Tracker",
@@ -37,6 +38,7 @@ export default function RootLayout({
       <body className="antialiased">
         <div className="min-h-screen pb-20">{children}</div>
         <BottomNav />
+        <NotificationScheduler />
       </body>
     </html>
   );

@@ -14,6 +14,15 @@ import {
   getLastSyncTime,
   getTodaySummary,
 } from "@/lib/healthkit";
+import {
+  type NotificationPrefs,
+  DEFAULT_PREFS,
+  getNotificationPrefs,
+  saveNotificationPrefs,
+  requestNotificationPermission,
+  scheduleAllNotifications,
+  cancelAllNotifications,
+} from "@/lib/notifications";
 
 export default function SettingsScreen() {
   const router = useRouter();
@@ -36,6 +45,9 @@ export default function SettingsScreen() {
     workouts: number;
   } | null>(null);
 
+  // Notification state
+  const [notifPrefs, setNotifPrefs] = useState<NotificationPrefs>(DEFAULT_PREFS);
+
   useEffect(() => {
     (async () => {
       const s = await AsyncStorage.getItem("startWeight");
@@ -56,8 +68,39 @@ export default function SettingsScreen() {
         const ls = await getLastSyncTime();
         setLastSync(ls);
       }
+
+      // Notification prefs
+      const np = await getNotificationPrefs();
+      setNotifPrefs(np);
     })();
   }, []);
+
+  const toggleNotifications = async () => {
+    if (!notifPrefs.enabled) {
+      const granted = await requestNotificationPermission();
+      if (granted) {
+        const np = { ...notifPrefs, enabled: true };
+        setNotifPrefs(np);
+        await saveNotificationPrefs(np);
+        await scheduleAllNotifications();
+        Alert.alert("Enabled", "You'll get daily reminders to stay on track.");
+      } else {
+        Alert.alert("Permission Required", "Please enable notifications in your device settings.");
+      }
+    } else {
+      const np = { ...notifPrefs, enabled: false };
+      setNotifPrefs(np);
+      await saveNotificationPrefs(np);
+      await cancelAllNotifications();
+    }
+  };
+
+  const updateNotifPref = async (key: keyof NotificationPrefs, value: boolean) => {
+    const np = { ...notifPrefs, [key]: value };
+    setNotifPrefs(np);
+    await saveNotificationPrefs(np);
+    if (np.enabled) await scheduleAllNotifications();
+  };
 
   const loadHkPreview = useCallback(async () => {
     if (!hkConnected) return;
@@ -426,6 +469,85 @@ export default function SettingsScreen() {
           ))}
         </View>
 
+        {/* ===== NOTIFICATIONS ===== */}
+        <View style={{ marginTop: 24, marginBottom: 8 }}>
+          <Text style={[base.label, { marginBottom: 8 }]}>REMINDERS</Text>
+          <View style={base.card}>
+            {/* Master toggle */}
+            <Pressable style={[base.rowBetween, { paddingVertical: 8 }]} onPress={toggleNotifications}>
+              <View>
+                <Text style={{ fontSize: 14, fontWeight: "500", color: C.text }}>Push Notifications</Text>
+                <Text style={{ fontSize: 11, color: C.textDim }}>Daily reminders to stay on track</Text>
+              </View>
+              <View style={[S.toggle, notifPrefs.enabled && S.toggleOn]}>
+                <View style={[S.toggleKnob, notifPrefs.enabled && S.toggleKnobOn]} />
+              </View>
+            </Pressable>
+
+            {notifPrefs.enabled && (
+              <>
+                <View style={S.divider} />
+
+                {/* Morning weight */}
+                <Pressable style={[base.rowBetween, { paddingVertical: 8 }]} onPress={() => updateNotifPref("morningWeight", !notifPrefs.morningWeight)}>
+                  <View style={[base.row, { gap: 8 }]}>
+                    <Text style={{ fontSize: 16 }}>⚖️</Text>
+                    <View>
+                      <Text style={{ fontSize: 13, color: C.text }}>Morning Weigh-in</Text>
+                      <Text style={{ fontSize: 11, color: C.textDim }}>7:00 AM</Text>
+                    </View>
+                  </View>
+                  <View style={[S.toggle, notifPrefs.morningWeight && S.toggleOn]}>
+                    <View style={[S.toggleKnob, notifPrefs.morningWeight && S.toggleKnobOn]} />
+                  </View>
+                </Pressable>
+
+                {/* Workout */}
+                <Pressable style={[base.rowBetween, { paddingVertical: 8 }]} onPress={() => updateNotifPref("workoutReminder", !notifPrefs.workoutReminder)}>
+                  <View style={[base.row, { gap: 8 }]}>
+                    <Text style={{ fontSize: 16 }}>🏃</Text>
+                    <View>
+                      <Text style={{ fontSize: 13, color: C.text }}>Workout Reminder</Text>
+                      <Text style={{ fontSize: 11, color: C.textDim }}>11:00 AM</Text>
+                    </View>
+                  </View>
+                  <View style={[S.toggle, notifPrefs.workoutReminder && S.toggleOn]}>
+                    <View style={[S.toggleKnob, notifPrefs.workoutReminder && S.toggleKnobOn]} />
+                  </View>
+                </Pressable>
+
+                {/* Evening review */}
+                <Pressable style={[base.rowBetween, { paddingVertical: 8 }]} onPress={() => updateNotifPref("eveningReview", !notifPrefs.eveningReview)}>
+                  <View style={[base.row, { gap: 8 }]}>
+                    <Text style={{ fontSize: 16 }}>📊</Text>
+                    <View>
+                      <Text style={{ fontSize: 13, color: C.text }}>Evening Review</Text>
+                      <Text style={{ fontSize: 11, color: C.textDim }}>8:00 PM</Text>
+                    </View>
+                  </View>
+                  <View style={[S.toggle, notifPrefs.eveningReview && S.toggleOn]}>
+                    <View style={[S.toggleKnob, notifPrefs.eveningReview && S.toggleKnobOn]} />
+                  </View>
+                </Pressable>
+
+                {/* Water */}
+                <Pressable style={[base.rowBetween, { paddingVertical: 8 }]} onPress={() => updateNotifPref("waterReminder", !notifPrefs.waterReminder)}>
+                  <View style={[base.row, { gap: 8 }]}>
+                    <Text style={{ fontSize: 16 }}>💧</Text>
+                    <View>
+                      <Text style={{ fontSize: 13, color: C.text }}>Water Reminders</Text>
+                      <Text style={{ fontSize: 11, color: C.textDim }}>Every 2 hrs, 9am-6pm</Text>
+                    </View>
+                  </View>
+                  <View style={[S.toggle, notifPrefs.waterReminder && S.toggleOn]}>
+                    <View style={[S.toggleKnob, notifPrefs.waterReminder && S.toggleKnobOn]} />
+                  </View>
+                </Pressable>
+              </>
+            )}
+          </View>
+        </View>
+
         <Pressable style={S.saveBtn} onPress={save}>
           <Text style={{ color: "white", fontWeight: "600", fontSize: 15 }}>
             Save Settings
@@ -525,5 +647,25 @@ const S = StyleSheet.create({
     paddingVertical: 14,
     alignItems: "center",
     marginTop: 12,
+  },
+  toggle: {
+    width: 44,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: "rgba(100,116,139,0.4)",
+    justifyContent: "center",
+    paddingHorizontal: 2,
+  },
+  toggleOn: {
+    backgroundColor: C.accent,
+  },
+  toggleKnob: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: "white",
+  },
+  toggleKnobOn: {
+    alignSelf: "flex-end" as const,
   },
 });

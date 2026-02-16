@@ -38,6 +38,9 @@
       "expo-router",
       "expo-secure-store",
       "expo-image-picker",
+      ["expo-notifications", {
+        "sounds": []
+      }],
       ["@kingstinct/react-native-healthkit", {
         "NSHealthShareUsageDescription": "Health Coach Doug reads your health data (weight, steps, workouts, heart rate) to provide personalized coaching and track your progress.",
         "NSHealthUpdateUsageDescription": "Health Coach Doug can save workout data back to Apple Health to keep all your health records in sync.",
