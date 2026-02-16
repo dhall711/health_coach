@@ -203,12 +203,17 @@ export async function getTodayWorkouts(): Promise<HealthKitWorkout[]> {
     const start = startOfToday();
 
     const result = await HK.queryWorkoutSamples({
-      from: start,
-      to: now,
+      limit: 0,
+      filter: {
+        date: {
+          startDate: start,
+          endDate: now,
+        },
+      },
     });
 
-    const workouts = result?.samples ?? result ?? [];
-    return (Array.isArray(workouts) ? workouts : []).map((w: any) => ({
+    const workouts = Array.isArray(result) ? result : [];
+    return workouts.map((w: any) => ({
       uuid: w.uuid || w.id || "",
       startDate: w.startDate?.toISOString?.() || String(w.startDate),
       endDate: w.endDate?.toISOString?.() || String(w.endDate),
