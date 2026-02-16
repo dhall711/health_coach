@@ -79,6 +79,8 @@ export default function TrackScreen() {
   const onRefresh = useCallback(async () => { setRefreshing(true); await load(); setRefreshing(false); }, [load]);
 
   const pickPhoto = async () => {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== "granted") { Alert.alert("Permission Needed", "Camera access is required to take food photos."); return; }
     const r = await ImagePicker.launchCameraAsync({ mediaTypes: ["images"], quality: 0.7, base64: true });
     if (r.canceled || !r.assets[0].base64) return;
     setAnalyzing(true);
@@ -125,6 +127,8 @@ export default function TrackScreen() {
   }, []);
 
   const takeSelfie = async () => {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== "granted") { Alert.alert("Permission Needed", "Camera access is required to take progress photos."); return; }
     const result = await ImagePicker.launchCameraAsync({ mediaTypes: ["images"], quality: 0.6, base64: true });
     if (result.canceled || !result.assets[0].base64) return;
     setSelfieUploading(true);
@@ -148,6 +152,8 @@ export default function TrackScreen() {
   };
 
   const pickSelfieFromGallery = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== "granted") { Alert.alert("Permission Needed", "Photo library access is required to choose photos."); return; }
     const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], quality: 0.6, base64: true });
     if (result.canceled || !result.assets[0].base64) return;
     setSelfieUploading(true);

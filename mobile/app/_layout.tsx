@@ -3,8 +3,14 @@ import { useFonts } from "expo-font";
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { useEffect } from "react";
+import { Text, TextInput } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import "../global.css";
+
+// Disable Dynamic Type font scaling globally so our layout doesn't break
+// on devices with larger accessibility text settings
+(Text as any).defaultProps = { ...((Text as any).defaultProps || {}), allowFontScaling: false };
+(TextInput as any).defaultProps = { ...((TextInput as any).defaultProps || {}), allowFontScaling: false };
 
 export { ErrorBoundary } from "expo-router";
 

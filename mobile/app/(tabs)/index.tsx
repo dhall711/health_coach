@@ -250,20 +250,18 @@ export default function TodayScreen() {
           <View style={[base.progressTrack, { marginBottom: 8 }]}>
             <View style={[base.progressFill, { width: `${calPct}%`, backgroundColor: calPct > 90 ? C.red : calPct > 70 ? C.amber : C.accent }]} />
           </View>
-          <View style={base.rowBetween}>
-            <Text style={base.caption}>{cals} eaten{totalBurned > 0 ? ` · ${totalBurned} burned` : ""}</Text>
-            <Text style={base.caption}>{calTarget} target</Text>
-          </View>
+          <Text style={[base.caption, { textAlign: "center" }]}>
+            {cals} eaten{totalBurned > 0 ? ` · ${totalBurned} burned` : ""} · {calTarget} target
+          </Text>
           {/* Macros */}
-          <View style={[base.row, { gap: 8, marginTop: 12 }]}>
-            {[["Protein", protein, proteinTarget, C.green], ["Carbs", carbs, carbsTarget, C.blue], ["Fat", fat, fatTarget, C.amber]].map(([l, v, g, c]) => {
+          <View style={[base.row, { gap: 6, marginTop: 12 }]}>
+            {[["P", protein, proteinTarget, C.green], ["C", carbs, carbsTarget, C.blue], ["F", fat, fatTarget, C.amber]].map(([l, v, g, c]) => {
               const pct = Math.min(100, ((v as number) / (g as number)) * 100);
               return (
                 <View key={l as string} style={S.macroBox}>
-                  <View style={[base.rowBetween, { marginBottom: 4 }]}>
-                    <Text style={{ fontSize: 10, color: C.textDim }}>{l as string}</Text>
-                    <Text style={{ fontSize: 10, color: C.textDim }}>{v}/{g}g</Text>
-                  </View>
+                  <Text style={{ fontSize: 10, color: C.textDim, textAlign: "center", marginBottom: 3 }}>
+                    {l} {v}/{g}g
+                  </Text>
                   <View style={[base.progressTrack, { height: 4 }]}>
                     <View style={[base.progressFill, { height: 4, width: `${pct}%`, backgroundColor: c as string }]} />
                   </View>
